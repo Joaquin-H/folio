@@ -1,0 +1,163 @@
+/* ---- Ajustes: pestaña de atajos ------------------------------------------ */
+
+/* Un atajo por renglón: el nombre a la izquierda y sus teclas a la derecha. El aviso (algo
+   no sirve, o choca con otra acción) ocupa todo el ancho debajo del renglón. */
+.shortcut-row {
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.shortcut-row .row-text {
+  min-width: 180px;
+}
+
+.shortcut-row .row-text span {
+  white-space: normal;
+  text-overflow: clip;
+  overflow: visible;
+}
+
+.shortcut-row .shortcut-keys {
+  max-width: 100%;
+}
+
+.shortcut-send-target {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.shortcut-send-target .row-text {
+  flex: 1 0 100%;
+}
+
+.shortcut-send-target .row-text span {
+  white-space: normal;
+  text-overflow: clip;
+  overflow: visible;
+}
+
+.shortcut-send-target .row-control {
+  max-width: 100%;
+}
+
+.shortcut-keys {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  justify-content: flex-end;
+}
+
+.shortcut-none {
+  color: var(--label-3);
+  font-size: 12px;
+}
+
+/* Cada combinación es una tecla que se toca para cambiarla. */
+.keycap {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.keycap:hover {
+  background: var(--fill-strong);
+}
+
+.keycap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Esperando la combinación nueva. */
+.keycap.listening {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1.5px var(--accent);
+  color: var(--accent);
+  animation: keycap-wait 1.6s ease-in-out infinite;
+}
+
+@keyframes keycap-wait {
+  50% {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+}
+
+/* Agregar una segunda combinación. */
+.keycap.add {
+  min-width: 26px;
+  padding: 0;
+  color: var(--label-2);
+}
+
+.keycap.add.listening {
+  padding: 0 10px;
+  color: var(--accent);
+}
+
+/* Volver a la combinación de fábrica: su lugar está siempre, así nada se corre al aparecer. */
+.shortcut-reset {
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.shortcut-reset.shown {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.shortcut-warn {
+  color: var(--warn);
+}
+
+.shortcut-notice {
+  display: flex;
+  flex: 1 0 100%;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.4;
+  animation: fade 0.2s ease;
+}
+
+.shortcut-notice.error {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.shortcut-notice-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+/* Gestos del mouse: se muestran, no se tocan. */
+kbd.keys.fixed {
+  background: none;
+  box-shadow: 0 0 0 0.5px var(--hairline);
+  color: var(--label-2);
+  font-weight: 500;
+}

@@ -1,0 +1,384 @@
+/* El recorrido de la primera vez (components/Tutorial.tsx): lo resaltado, el resto apenas
+   atenuado, y un globo por paso con el aspecto de una hoja del cuaderno — papel, margen
+   rojo y renglones — para que se vea como parte de Book y no como un cartel de afuera. */
+
+.tour {
+  --tour-dim: rgba(16, 16, 22, 0.32);
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+  animation: fade 0.3s ease;
+}
+
+:root[data-theme='dark'] .tour {
+  --tour-dim: rgba(0, 0, 0, 0.44);
+}
+
+.tour.leaving {
+  animation: fade-out 0.24s ease-in forwards;
+}
+
+/* Cuando algo más pide la atención (se escribe, se abre un menú, un diálogo…) el recorrido
+   se desvanece y no estorba; vuelve solo en cuanto eso termina. */
+.tour.hidden {
+  visibility: hidden;
+  transition: visibility 0s 0.2s;
+}
+
+.tour.hidden .tour-hole,
+.tour.hidden .tour-balloon {
+  opacity: 0;
+}
+
+.tour.hidden .tour-block,
+.tour.leaving .tour-block {
+  pointer-events: none;
+}
+
+/* Lo que no se puede tocar mientras dura el recorrido: transparente, pero atrapa los clics. */
+.tour-block {
+  position: absolute;
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* Lo resaltado: un hueco en la atenuación, con un anillo suave del color del cuaderno. */
+.tour-hole {
+  position: absolute;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--accent) 78%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 0 0 100vmax var(--tour-dim);
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.tour.glide .tour-hole {
+  transition:
+    left 0.38s cubic-bezier(0.3, 0.7, 0.2, 1),
+    top 0.38s cubic-bezier(0.3, 0.7, 0.2, 1),
+    width 0.38s cubic-bezier(0.3, 0.7, 0.2, 1),
+    height 0.38s cubic-bezier(0.3, 0.7, 0.2, 1),
+    opacity 0.2s ease;
+}
+
+/* Donde se pide probar algo, el anillo late despacito: es lo único que responde. */
+.tour-hole.try::after {
+  position: absolute;
+  inset: -5px;
+  border: 1.5px solid var(--accent);
+  border-radius: 16px;
+  content: '';
+  opacity: 0;
+  animation: tour-ping 2.4s ease-out 0.6s infinite;
+}
+
+@keyframes tour-ping {
+  0% {
+    inset: -5px;
+    opacity: 0.55;
+  }
+  100% {
+    inset: -15px;
+    opacity: 0;
+  }
+}
+
+/* ---- el globo ---------------------------------------------------------------------- */
+
+.tour-balloon {
+  position: absolute;
+  z-index: 1;
+  padding: 15px 16px 12px 33px;
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.12),
+    0 16px 44px rgba(0, 0, 0, 0.3);
+  color: var(--label);
+  cursor: default;
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.2s ease;
+  animation: tour-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tour.glide .tour-balloon {
+  transition:
+    left 0.38s cubic-bezier(0.3, 0.7, 0.2, 1),
+    top 0.38s cubic-bezier(0.3, 0.7, 0.2, 1),
+    opacity 0.2s ease;
+}
+
+@keyframes tour-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+/* En oscuro la sombra no se nota: un borde finísimo despega el globo del papel de atrás. */
+:root[data-theme='dark'] .tour-balloon {
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.18),
+    0 16px 44px rgba(0, 0, 0, 0.6);
+}
+
+/* el margen rojo de la hoja */
+.tour-balloon::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 22px;
+  width: 1px;
+  background: var(--margin-line);
+  content: '';
+  pointer-events: none;
+}
+
+.tour-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--paper);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.tour-arrow.top {
+  top: -5px;
+  margin-left: -6px;
+  box-shadow: -1px -1px 1px rgba(0, 0, 0, 0.1);
+}
+
+.tour-arrow.bottom {
+  bottom: -5px;
+  margin-left: -6px;
+  box-shadow: 1px 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+.tour-arrow.left {
+  left: -5px;
+  margin-top: -6px;
+  box-shadow: -1px 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+.tour-arrow.right {
+  right: -5px;
+  margin-top: -6px;
+  box-shadow: 1px -1px 1px rgba(0, 0, 0, 0.1);
+}
+
+/* lo que cambia con cada paso se desvanece apenas al llegar */
+.tour-content {
+  animation: fade 0.26s ease;
+}
+
+.tour-title {
+  margin: 0 0 3px;
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 22px;
+}
+
+/* El texto va sobre los renglones, como lo escrito en una hoja. */
+.tour-text {
+  margin: 0;
+  background-image: linear-gradient(to bottom, transparent 19px, var(--rule) 19px);
+  background-size: 100% 20px;
+  color: color-mix(in srgb, var(--label) 84%, transparent);
+  font-size: 12.5px;
+  line-height: 20px;
+}
+
+.tour-key {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 0.5px var(--hairline);
+  color: var(--label);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tour-try {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tour-try svg {
+  flex: none;
+}
+
+.tour-try.done {
+  color: color-mix(in srgb, var(--green) 68%, var(--label));
+  animation: fade 0.2s ease;
+}
+
+.tour-foot {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.tour-foot .button.quiet {
+  margin-left: -8px;
+}
+
+.tour-count {
+  flex: 1;
+  min-width: 0;
+  color: var(--label-3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tour .button:focus-visible {
+  outline-offset: 2px;
+}
+
+/* ---- Cartel de bienvenida inicial (Stage 1) y resumen final (Stage 3) ------ */
+
+.welcome-overlay,
+.tour-outro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
+  animation: fade 0.22s ease;
+}
+
+.welcome-card,
+.tour-outro {
+  width: min(620px, 100%);
+  max-height: min(680px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: pop 0.16s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.welcome-head,
+.tour-outro-head {
+  padding: 16px 18px 12px 18px;
+  border-bottom: 0.5px solid var(--hairline);
+}
+
+.welcome-pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.welcome-body,
+.tour-outro-body {
+  padding: 14px 18px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.welcome-intro {
+  margin: 0 0 14px;
+  padding: 0 2px;
+  color: var(--label-2);
+  font-size: 12.5px;
+  line-height: 1.48;
+}
+
+.welcome-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.welcome-section-head h3 {
+  margin: 0;
+}
+
+.welcome-tabs {
+  width: 100%;
+}
+
+.welcome-tabs > button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.welcome-provider-picker > button {
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.welcome-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 0.5px solid var(--hairline);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.welcome-start-default {
+  white-space: normal;
+  text-align: right;
+  line-height: 1.25;
+  padding: 6px 12px;
+}
+
+.tour-outro-check {
+  color: var(--label-2);
+}
+
+.tour-outro-card {
+  align-items: flex-start;
+  padding: 12px 14px;
+}
+
+.tour-outro-card-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--fill);
+  color: var(--label);
+  flex: none;
+  margin-top: 1px;
+}
+
+

@@ -1,0 +1,971 @@
+/* Tapa y contratapa del cuaderno cerrado: sus estilos (lisa, con manchas, con tira, con
+   lomo, de cuero), las imágenes pegadas y el modo de acomodarlas, el giro para darlo
+   vuelta y las miniaturas de Ajustes.
+
+   Lo que dibuja un estilo mide en `cqw` (centésimos del ancho de la tapa): el patrón, el
+   lomo, la tira y las costuras crecen y se achican con el cuaderno, como en uno de verdad,
+   y las miniaturas de Ajustes salen de estas mismas reglas. Las texturas finas (la trama
+   de una tela) van en píxeles enteros: a medio píxel se empastan. */
+
+/* ---- colores que salen del color de la tapa ---------------------------------------- */
+
+.cover,
+.cover-thumb {
+  container-type: inline-size;
+  /* Cuán claras son las vetas claras del jaspeado; en tema oscuro, un poco más calmas. */
+  --spot-light: 0.88;
+  /* Valores para una tapa oscura, por si el motor no sabe derivar colores (abajo). */
+  --cover-ink: rgba(255, 255, 255, 0.88);
+  --cover-ink-soft: rgba(255, 255, 255, 0.52);
+  --cover-ink-faint: rgba(255, 255, 255, 0.14);
+  --cover-ink-under: rgba(0, 0, 0, 0.25);
+  --cover-deep: color-mix(in srgb, var(--cover) 34%, #0f0f12);
+  --cover-band: color-mix(in srgb, var(--cover) 74%, #000);
+  --cover-cloth: color-mix(in srgb, var(--cover) 52%, #141417);
+  --cover-spot: rgba(236, 232, 224, 0.72);
+  --cover-pore: rgba(0, 0, 0, 0.16);
+  --cover-thread: rgba(255, 255, 255, 0.36);
+}
+
+:root[data-theme='dark'] .cover,
+:root[data-theme='dark'] .cover-thumb {
+  --spot-light: 0.78;
+}
+
+/* `(0.64 - l) * 1000` recortado entre dos valores es un escalón: da el primero si la tapa
+   es más clara que 0,64 y el segundo si es más oscura. Así la tinta es clara sobre las
+   tapas oscuras y oscura sobre las claras (kraft, mostaza, rosa), y lo mismo la tela del
+   lomo, el jaspeado y el hilo: siempre acompañan al color elegido sin perder contraste. */
+@supports (color: oklch(from red l c h)) {
+  .cover,
+  .cover-thumb {
+    /* tinta: la cruz, el menú, la marca y el pie de imprenta */
+    --cover-ink: oklch(from var(--cover) clamp(0.2, (0.64 - l) * 1000, 0.98) 0.01 h / 0.88);
+    /* la tinta oscura necesita más cuerpo que la clara para leerse igual */
+    --cover-ink-soft: oklch(from var(--cover) clamp(0.2, (0.64 - l) * 1000, 0.98) 0.01 h / clamp(0.55, (l - 0.64) * 1000, 0.74));
+    --cover-ink-faint: oklch(from var(--cover) clamp(0.2, (0.64 - l) * 1000, 0.98) 0.01 h / 0.14);
+    /* el relieve de lo grabado: sombra bajo la tinta clara, brillo bajo la oscura */
+    --cover-ink-under: oklch(from var(--cover) clamp(0, (l - 0.64) * 1000, 1) 0 h / 0.25);
+    /* tela oscura del cuaderno de composición: casi negra, teñida apenas con el tono de la tapa */
+    --cover-deep: oklch(from var(--cover) clamp(0.15, l * 0.34, 0.23) calc(c * 0.42) h);
+    /* tira elástica satinada: un tono apenas más profundo y saturado que la tapa, o grafito sobre negro */
+    --cover-band: oklch(from var(--cover) clamp(clamp(0.24, l * 0.85, 0.58), (0.25 - l) * 1000, l + 0.08) calc(c * 1.06 + 0.01) h);
+    /* tela del lomo: más oscura y sobria que la tapa; sobre negro puro, antracita oscuro */
+    --cover-cloth: oklch(from var(--cover) clamp(clamp(0.16, l * 0.56, 0.36), (0.23 - l) * 1000, l + 0.07) calc(c * 0.58) h);
+    /* jaspeado: vetas claras cálidas sobre tapas oscuras y vetas minerales más intensas sobre tapas claras */
+    --cover-spot: oklch(
+      from var(--cover) clamp(calc(l * 0.52), (0.62 - l) * 1000, var(--spot-light))
+        clamp(calc(c * 0.32 + 0.012), (l - 0.62) * 1000, calc(c * 0.78 + 0.02)) h /
+        clamp(0.56, (0.62 - l) * 1000, 0.72)
+    );
+    /* grano del cuero: teñido en el propio tono de la tapa para que en colores claros no parezca corcho */
+    --cover-pore: oklch(from var(--cover) calc(l * 0.22) calc(c * 0.45) h / clamp(0.09, (0.62 - l) * 1000, 0.19));
+    /* pespunte y filete gofrado: hilo encerado tono sobre tono, sobrio y sin contraste chillón */
+    --cover-thread: oklch(from var(--cover) clamp(l - 0.16, (0.58 - l) * 1000, l + 0.17) calc(c * 0.65 + 0.01) h / 0.44);
+  }
+}
+
+/* ---- tapa ---------------------------------------------------------------------------- */
+
+/* Sin relleno propio: `cqw` se mide sobre el interior de la tapa, y tiene que ser todo su
+   ancho. El lugar de la etiqueta lo dan sus márgenes. */
+.cover {
+  position: relative;
+  min-width: 0;
+  border-radius: 16px;
+  animation: book-in 0.24s ease;
+}
+
+/* Desde la contratapa el cuaderno se abre hacia atrás: el cursor lo avisa. */
+.cover.back {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='white' fill-opacity='.94' stroke='black' stroke-opacity='.2'/><path d='M18.5 10l-6 6 6 6' fill='none' stroke='%231d1d1f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>") 16 16, w-resize;
+}
+
+.cover.back:active {
+  cursor: grabbing;
+}
+
+/* El estilo se dibuja en dos capas: una debajo de las imágenes pegadas (el color, el
+   patrón, el lomo) y otra encima (la tira elástica, las costuras). */
+.cover-skin,
+.cover-stickers,
+.cover-over {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.cover-skin {
+  z-index: 0;
+  /* Tapa dura tipo Moleskine/Leuchtturm: curvatura del canto izquierdo, hendido de bisagra,
+     luz diagonal suave y micrograno mate de cartón forrado. */
+  background:
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.28) 0%,
+      rgba(0, 0, 0, 0.09) 0.7cqw,
+      rgba(255, 255, 255, 0.035) 1.4cqw,
+      transparent 2.7cqw
+    ),
+    linear-gradient(
+      to right,
+      transparent 3.2cqw,
+      rgba(0, 0, 0, 0.13) 3.55cqw,
+      rgba(0, 0, 0, 0.03) 3.8cqw,
+      rgba(255, 255, 255, 0.045) 4.0cqw,
+      transparent 4.35cqw
+    ),
+    linear-gradient(148deg, rgba(255, 255, 255, 0.065) 0%, rgba(255, 255, 255, 0.015) 38%, transparent 56%, rgba(0, 0, 0, 0.12) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.055 0 0 0 -0.016'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")
+      0 0 / 160px 160px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    inset 0 -1.5px 0 rgba(0, 0, 0, 0.28),
+    inset -1px 0 0 rgba(255, 255, 255, 0.04),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.cover-stickers {
+  z-index: 1;
+}
+
+.cover-over {
+  z-index: 2;
+}
+
+.cover-skin::before,
+.cover-skin::after,
+.cover-over::before,
+.cover-over::after {
+  position: absolute;
+}
+
+/* En la contratapa todo queda del otro lado: el lomo a la derecha, la tira a la izquierda. */
+.cover.back > .cover-skin,
+.cover.back > .cover-over {
+  transform: scaleX(-1);
+}
+
+/* ---- manchas: el cuaderno de composición ---- */
+
+/* Subcapa mineral oscura más luz diagonal para darle profundidad orgánica al jaspeado. */
+[data-cover-style='spots'] > .cover-skin {
+  background:
+    linear-gradient(148deg, rgba(255, 255, 255, 0.05) 0%, transparent 52%, rgba(0, 0, 0, 0.14) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 800' preserveAspectRatio='none'%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.11 0.12' numOctaves='4' seed='9'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12 0 0 0 -6.4'/%3E%3C/filter%3E%3Crect width='600' height='800' filter='url(%23d)' opacity='.16'/%3E%3C/svg%3E")
+      0 0 / 100% 100% no-repeat;
+}
+
+/* Jaspeado fino y orgánico: dos escalas de ruido fractal combinadas producen el moteado
+   menudo y granulado de un cuaderno de composición clásico, sin manchones grandes. */
+[data-cover-style='spots'] > .cover-skin::before {
+  inset: 0;
+  background: var(--cover-spot);
+  content: '';
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 800' preserveAspectRatio='none'%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.095 0.11' numOctaves='5' seed='19' result='a'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.27 0.29' numOctaves='3' seed='41' result='b'/%3E%3CfeComposite in='a' in2='b' operator='arithmetic' k2='0.66' k3='0.34'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 26 0 0 0 -14.3'/%3E%3C/filter%3E%3Crect width='600' height='800' filter='url(%23m)'/%3E%3C/svg%3E")
+    0 0 / 100% 100% no-repeat;
+}
+
+/* Cinta de tela oscura en el lomo, con trama fina de encuadernación y escalón físico. */
+[data-cover-style='spots'] > .cover-skin::after {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 8.8cqw;
+  background:
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.36) 0%,
+      rgba(0, 0, 0, 0.08) 18%,
+      rgba(255, 255, 255, 0.04) 42%,
+      transparent 60%,
+      rgba(0, 0, 0, 0.16) 64%,
+      rgba(255, 255, 255, 0.045) 69%,
+      rgba(255, 255, 255, 0.03) 94%,
+      rgba(0, 0, 0, 0.22) 100%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Cpath d='M0 0h3v3H0zM3 3h3v3H3z' fill='%23fff' fill-opacity='.022'/%3E%3Cpath d='M3 0h3v3H3zM0 3h3v3H0z' fill='%23000' fill-opacity='.05'/%3E%3C/svg%3E")
+      0 0 / 3px 3px,
+    var(--cover-deep);
+  box-shadow:
+    1px 0 0 rgba(0, 0, 0, 0.46),
+    2px 0 4px rgba(0, 0, 0, 0.22),
+    inset -1px 0 0 rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1.5px 0 rgba(0, 0, 0, 0.32);
+  content: '';
+}
+
+.cover[data-cover-style='spots'] {
+  --cover-tape: 8.8cqw;
+}
+
+/* ---- con tira: elástico de agenda ---- */
+
+/* Sombra de contacto ajustada al borde de la tira y leve pellizco en los cantos superior e inferior. */
+[data-cover-style='strap'] > .cover-over::before {
+  top: 0;
+  right: 9.7cqw;
+  bottom: 0;
+  width: 5.2cqw;
+  background:
+    radial-gradient(ellipse 52% 1.1cqw at 50% 0%, rgba(0, 0, 0, 0.24), transparent 100%),
+    radial-gradient(ellipse 52% 1.1cqw at 50% 100%, rgba(0, 0, 0, 0.28), transparent 100%),
+    linear-gradient(
+      to right,
+      transparent 0%,
+      rgba(0, 0, 0, 0.08) 9%,
+      rgba(0, 0, 0, 0.14) 50%,
+      rgba(0, 0, 0, 0.09) 91%,
+      transparent 100%
+    );
+  content: '';
+}
+
+/* Banda elástica vertical plana y tejida, con relieve nítido y vuelta en los cantos superior e inferior. */
+[data-cover-style='strap'] > .cover-over::after {
+  top: 0;
+  right: 10.2cqw;
+  bottom: 0;
+  width: 4.2cqw;
+  background:
+    /* vuelta en los cantos superior e inferior: corona de luz al curvarse y sombra al doblar hacia atrás */
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.34) 0%,
+      rgba(0, 0, 0, 0.08) 0.7cqw,
+      rgba(255, 255, 255, 0.14) 1.4cqw,
+      transparent 2.8cqw,
+      rgba(255, 255, 255, 0.05) 32%,
+      transparent 58%,
+      rgba(0, 0, 0, 0.04) 86%,
+      rgba(255, 255, 255, 0.11) calc(100% - 1.4cqw),
+      rgba(0, 0, 0, 0.10) calc(100% - 0.7cqw),
+      rgba(0, 0, 0, 0.38) 100%
+    ),
+    /* sección cilíndrica suave de la cinta: filo de luz a la izquierda y caída a la derecha */
+    linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.07) 14%,
+      rgba(255, 255, 255, 0.02) 52%,
+      rgba(0, 0, 0, 0.04) 86%,
+      rgba(0, 0, 0, 0.16) 100%
+    ),
+    /* trama horizontal fina de elástico tejido */
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.028) 0px,
+      rgba(255, 255, 255, 0.028) 1px,
+      rgba(0, 0, 0, 0.032) 1px,
+      rgba(0, 0, 0, 0.032) 2px
+    ),
+    var(--cover-band);
+  box-shadow:
+    -0.5px 0 0 rgba(0, 0, 0, 0.22),
+    0.5px 0 0 rgba(0, 0, 0, 0.26),
+    -1.5px 0 2.5px rgba(0, 0, 0, 0.12),
+    2px 0 3.5px rgba(0, 0, 0, 0.18),
+    inset 1px 0 0 rgba(255, 255, 255, 0.16),
+    inset -1px 0 0 rgba(0, 0, 0, 0.12);
+  content: '';
+}
+
+/* La etiqueta deja lugar a la tira. */
+.cover[data-cover-style='strap'] .cover-label {
+  margin-right: 19cqw;
+}
+
+.cover.front[data-cover-style='strap'] .cover-brand {
+  right: 18cqw;
+}
+
+/* ---- con lomo: cinta de tela ---- */
+
+[data-cover-style='spine'] > .cover-skin::after {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 10.5cqw;
+  background:
+    /* curvatura del canto izquierdo, hendido de bisagra y relieve donde termina la tela */
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.34) 0%,
+      rgba(0, 0, 0, 0.08) 14%,
+      rgba(255, 255, 255, 0.045) 32%,
+      transparent 52%,
+      rgba(0, 0, 0, 0.17) 58%,
+      rgba(0, 0, 0, 0.04) 61%,
+      rgba(255, 255, 255, 0.055) 64%,
+      transparent 72%,
+      rgba(255, 255, 255, 0.04) 95%,
+      rgba(0, 0, 0, 0.20) 100%
+    ),
+    /* trama fina de tela de encuadernación (buckram/lino) sin rayas horizontales duras */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Cpath d='M0 0h3v3H0zM3 3h3v3H3z' fill='%23fff' fill-opacity='.024'/%3E%3Cpath d='M3 0h3v3H3zM0 3h3v3H0z' fill='%23000' fill-opacity='.052'/%3E%3C/svg%3E")
+      0 0 / 3px 3px,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='c' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0 0 0 -0.015'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23c)'/%3E%3C/svg%3E")
+      0 0 / 120px 120px,
+    var(--cover-cloth);
+  /* escalón físico donde termina la tela y empieza el cartón forrado de la tapa */
+  box-shadow:
+    1px 0 0 rgba(0, 0, 0, 0.36),
+    2px 0 0 rgba(255, 255, 255, 0.045),
+    2.5px 0 4px rgba(0, 0, 0, 0.16),
+    inset -1px 0 0 rgba(255, 255, 255, 0.065),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1.5px 0 rgba(0, 0, 0, 0.28);
+  content: '';
+}
+
+.cover[data-cover-style='spine'] {
+  --cover-tape: 10.5cqw;
+}
+
+/* La etiqueta no pisa la cinta. */
+.cover[data-cover-style='spine'] .cover-label,
+.cover[data-cover-style='spots'] .cover-label {
+  margin-left: 17cqw;
+}
+
+/* ---- cuero cosido ---- */
+
+/* Viñeteado suave hacia los bordes, hendido del lomo y bisel acolchado de encuadernación. */
+[data-cover-style='leather'] > .cover-skin {
+  background:
+    radial-gradient(ellipse 88% 84% at 50% 48%, transparent 56%, rgba(0, 0, 0, 0.22) 100%),
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.28) 0%,
+      rgba(0, 0, 0, 0.08) 0.9cqw,
+      rgba(255, 255, 255, 0.035) 1.6cqw,
+      transparent 2.8cqw
+    ),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.07) 0%, transparent 48%, rgba(0, 0, 0, 0.13) 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.12),
+    inset 0 -1.5px 2px rgba(0, 0, 0, 0.32),
+    inset 0 0 14px rgba(0, 0, 0, 0.15);
+}
+
+/* Grano fino de cuero marroquí: poros menudos y suaves, sin islas grandes tipo corcho. */
+[data-cover-style='leather'] > .cover-skin::before {
+  inset: 0;
+  background: var(--cover-pore);
+  content: '';
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.58 0.64' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.3 0 0 0 -0.84'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E")
+    0 0 / 180px 180px;
+}
+
+[data-cover-style='leather'] > .cover-skin::after {
+  inset: 0;
+  background: #fff;
+  content: '';
+  opacity: 0.045;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.64' numOctaves='2' seed='5' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3.2 0 0 0 -1.45'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23s)'/%3E%3C/svg%3E")
+    0 0 / 180px 180px;
+}
+
+/* Marco gofrado hundido en el cuero a lo largo del borde. */
+[data-cover-style='leather'] > .cover-over::before {
+  inset: 2.85cqw;
+  border: 0.36cqw solid rgba(0, 0, 0, 0.24);
+  border-radius: 2.0cqw;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.075),
+    0 -1px 0 rgba(0, 0, 0, 0.16),
+    inset 0 1px 1px rgba(0, 0, 0, 0.24),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  content: '';
+}
+
+/* Pespunte fino alojado dentro del surco gofrado y filete interior de encuadernación. */
+[data-cover-style='leather'] > .cover-over::after {
+  inset: 0;
+  background: var(--cover-thread);
+  content: '';
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 380 500' preserveAspectRatio='none'%3E%3Crect x='11.5' y='11.5' width='357' height='477' rx='9.2' fill='none' stroke='%23000' stroke-width='.82' stroke-dasharray='2.1 1.7' stroke-linecap='round'/%3E%3Crect x='15.8' y='15.8' width='348.4' height='468.4' rx='7.2' fill='none' stroke='%23000' stroke-width='.45' stroke-opacity='.5'/%3E%3C/svg%3E")
+    0 0 / 100% 100% no-repeat;
+}
+
+/* Lo que va en las esquinas entra dentro del marco gofrado. */
+.cover[data-cover-style='leather'] {
+  --cover-inset: calc(3.5cqw + 6px);
+}
+
+/* ---- lo que va sobre la tapa: cerrar, etiqueta, marca, pie de imprenta ---- */
+
+.cover-controls,
+.cover-label,
+.cover-brand,
+.cover-imprint {
+  transition: opacity 0.2s ease;
+}
+
+.cover-controls {
+  position: absolute;
+  top: calc(var(--cover-inset, 0px) + 8px);
+  right: calc(var(--cover-inset, 0px) + 8px);
+  z-index: 4;
+  display: flex;
+  gap: 1px;
+}
+
+/* En la contratapa el lomo queda a la derecha: los botones van a su lado, no encima. */
+.cover.back .cover-controls {
+  right: calc(max(var(--cover-inset, 0px), var(--cover-tape, 0px)) + 8px);
+}
+
+/* Con una sola hoja, además, está la espiral. */
+.book.single .cover.back .cover-controls {
+  right: calc(max(var(--cover-tape, 0px), 38px) + 8px);
+}
+
+.cover .cover-controls .icon-button {
+  color: var(--cover-ink-soft);
+  cursor: default;
+}
+
+.cover .cover-controls .icon-button:hover,
+.cover .cover-controls .icon-button[aria-expanded='true'] {
+  background: var(--cover-ink-faint);
+  color: var(--cover-ink);
+}
+
+/* etiqueta pegada en la tapa */
+.cover-label {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  gap: 1px;
+  margin: 20cqw 11cqw 0;
+  padding: 13px 10px 8px 16px;
+  border-radius: 7px;
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 0 0 1px var(--hairline);
+  color: var(--label);
+  cursor: default;
+}
+
+/* Con una sola hoja, la espiral ocupa el borde del lomo. */
+.book.single .cover-label {
+  margin-left: calc(11cqw + 20px);
+}
+
+.cover .cover-label input.cover-name {
+  width: 100%;
+  height: 30px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: none;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+
+.cover .cover-label input.cover-name:hover {
+  background: var(--fill);
+}
+
+/* Al editar el nombre, el campo se marca con el acento: el color elegido para el cuaderno. */
+.cover .cover-label input.cover-name:focus {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.cover-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  color: var(--label-2);
+  font-size: 12.5px;
+}
+
+.cover-actions {
+  display: flex;
+  flex: none;
+  gap: 1px;
+}
+
+/* marca de la aplicación, grabada abajo a la derecha */
+.cover-brand {
+  position: absolute;
+  right: calc(var(--cover-inset, 0px) + 20px);
+  bottom: calc(var(--cover-inset, 0px) + 16px);
+  z-index: 3;
+  color: var(--cover-ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 0 var(--cover-ink-under);
+  pointer-events: none;
+}
+
+/* pie de imprenta de la contratapa */
+.cover-imprint {
+  position: absolute;
+  bottom: calc(var(--cover-inset, 0px) + 16px);
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  width: max-content;
+  max-width: 76%;
+  margin: 0;
+  color: var(--cover-ink-soft);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  text-shadow: 0 1px 0 var(--cover-ink-under);
+  translate: -50% 0;
+  pointer-events: none;
+}
+
+.cover-imprint strong {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Sobre las manchas, lo escrito y los botones llevan su propio fondo liso, como el
+   recuadro impreso de los cuadernos de composición. */
+.cover[data-cover-style='spots'] .cover-brand,
+.cover[data-cover-style='spots'] .cover-imprint {
+  padding: 3px 9px;
+  border-radius: 5px;
+  background: var(--cover);
+  box-shadow: 0 0 0 1px var(--cover-ink-faint);
+  color: var(--cover-ink);
+  text-shadow: none;
+}
+
+.cover[data-cover-style='spots'] .cover-brand {
+  right: 16px;
+  bottom: 14px;
+}
+
+.cover[data-cover-style='spots'] .cover-imprint {
+  padding: 4px 10px;
+}
+
+.cover[data-cover-style='spots'] .cover-controls {
+  border-radius: 8px;
+  background: var(--cover);
+  box-shadow: 0 0 0 1px var(--cover-ink-faint);
+}
+
+.cover[data-cover-style='spots'] .cover-controls .icon-button {
+  color: var(--cover-ink);
+}
+
+/* ---- imágenes pegadas ---- */
+
+.sticker,
+.sticker-box {
+  position: absolute;
+  translate: -50% -50%;
+}
+
+/* Inertes: un clic sobre una imagen es un clic en la tapa. La sombra sigue su contorno,
+   como el borde de una calcomanía. */
+.sticker {
+  max-width: none;
+  filter: drop-shadow(0 0.12cqw 0.18cqw rgba(0, 0, 0, 0.4));
+  user-select: none;
+  animation: fade 0.25s ease;
+}
+
+/* Al soltar un archivo de imagen sobre la tapa. */
+.cover.dropping::after {
+  position: absolute;
+  inset: 7px;
+  z-index: 7;
+  border: 2px dashed var(--cover-ink-soft);
+  border-radius: 10px;
+  content: '';
+  pointer-events: none;
+  animation: fade 0.15s ease;
+}
+
+/* ---- acomodar las imágenes ---- */
+
+/* Mientras se acomoda, lo demás de la tapa se aparta: se ve, pero no recibe clics, así
+   una imagen que quedó debajo de la etiqueta se puede agarrar igual. */
+.cover.arranging,
+.cover.arranging:active {
+  cursor: default;
+}
+
+.cover.arranging .cover-controls,
+.cover.arranging .cover-label,
+.cover.arranging .cover-brand,
+.cover.arranging .cover-imprint {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.cover-arrange {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  animation: fade 0.2s ease;
+}
+
+.cover-arrange.leaving {
+  pointer-events: none;
+  animation: fade-out 0.17s ease-in forwards;
+}
+
+/* Cada imagen tiene encima un marco del mismo tamaño y con el mismo giro: de ahí se la
+   agarra. El marco es de dos tonos para verse sobre cualquier tapa y cualquier imagen. */
+.sticker-box {
+  border-radius: 2px;
+  outline: 1.5px dashed transparent;
+  cursor: move;
+  touch-action: none;
+  transition:
+    outline-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.sticker-box:hover {
+  outline-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.28);
+}
+
+.sticker-box.selected {
+  outline-color: #fff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.6);
+}
+
+.sticker-box:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.sticker-handle {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.45);
+  color: #1d1d1f;
+  animation: fade 0.15s ease;
+}
+
+/* se agarran con comodidad aunque se vean chicas */
+.sticker-handle::after {
+  position: absolute;
+  inset: -6px;
+  content: '';
+}
+
+.sticker-handle.nw {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
+.sticker-handle.se {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
+}
+
+.sticker-handle.ne {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+
+.sticker-handle.sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+
+/* manija de girar: arriba, unida al marco por un tallo */
+.sticker-handle.turn {
+  top: -36px;
+  left: calc(50% - 10px);
+  width: 20px;
+  height: 20px;
+  cursor: grab;
+}
+
+.sticker-handle.turn:active {
+  cursor: grabbing;
+}
+
+.sticker-handle.turn::before {
+  position: absolute;
+  top: 100%;
+  left: calc(50% - 0.75px);
+  width: 1.5px;
+  height: 15px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  content: '';
+}
+
+/* Cartel del modo, con el lenguaje de los carteles de las hojas (.page-mode): va en papel,
+   como la etiqueta, porque el acento sale del color de la tapa y sobre ella no se vería. */
+.page-mode.cover-mode {
+  z-index: 6;
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 0 0 0.5px var(--hairline);
+  color: var(--label);
+  cursor: default;
+}
+
+.page-mode.cover-mode.leaving {
+  animation: fade-out 0.17s ease-in forwards;
+}
+
+.page-mode.cover-mode button {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  font-weight: 600;
+}
+
+.page-mode.cover-mode button:hover {
+  background: color-mix(in srgb, var(--accent) 86%, #000);
+}
+
+.page-mode.cover-mode .cover-mode-remove {
+  margin-right: -4px;
+  padding: 3px 6px;
+  background: var(--fill-strong);
+  color: var(--label);
+  animation: fade 0.15s ease;
+}
+
+.page-mode.cover-mode .cover-mode-remove:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.cover .toast {
+  bottom: 16%;
+  z-index: 8;
+}
+
+/* ---- dar vuelta el cuaderno ---- */
+
+/* Gira sobre su eje hasta quedar de canto, cambia de cara y termina de girar, siempre
+   para el mismo lado. A mitad de camino se achica apenas: así la esquina que se acerca
+   no se sale de la ventana, que mide lo justo. (Con las animaciones apagadas en el
+   sistema no hay giro: Cover.tsx cambia de cara directamente.) */
+.book[data-flip='out'] {
+  animation: cover-turn-away 0.17s cubic-bezier(0.45, 0, 0.9, 0.55) forwards;
+}
+
+.book[data-flip='in'] {
+  animation: cover-turn-back 0.23s cubic-bezier(0.1, 0.55, 0.3, 1);
+}
+
+.book[data-face='back'][data-flip='out'] {
+  animation-name: cover-turn-back-away;
+}
+
+.book[data-face='back'][data-flip='in'] {
+  animation-name: cover-turn-away-back;
+}
+
+@keyframes cover-turn-away {
+  to {
+    filter: brightness(0.7);
+    transform: perspective(4000px) rotateY(-90deg) scale(0.9);
+  }
+}
+
+@keyframes cover-turn-back {
+  from {
+    filter: brightness(0.7);
+    transform: perspective(4000px) rotateY(-90deg) scale(0.9);
+  }
+}
+
+@keyframes cover-turn-back-away {
+  to {
+    filter: brightness(0.7);
+    transform: perspective(4000px) rotateY(90deg) scale(0.9);
+  }
+}
+
+@keyframes cover-turn-away-back {
+  from {
+    filter: brightness(0.7);
+    transform: perspective(4000px) rotateY(90deg) scale(0.9);
+  }
+}
+
+/* Visto de atrás, la espiral queda a la derecha. Cada lado tiene su animación para que,
+   al cambiar de lado, entre desvaneciéndose en vez de saltar. */
+.book.single .spiral {
+  animation: spiral-left 0.24s ease;
+}
+
+.book.single[data-face='back'] .spiral {
+  right: 7px;
+  left: auto;
+  transform: scaleX(-1);
+  animation-name: spiral-right;
+}
+
+@keyframes spiral-left {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes spiral-right {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---- Ajustes: miniaturas de los estilos e imágenes pegadas ---- */
+
+.cover-styles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Una tapa en miniatura: mismas capas y mismas reglas que la de verdad. */
+.cover-thumb {
+  position: relative;
+  flex: none;
+  width: 48px;
+  aspect-ratio: 0.76;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--cover);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: box-shadow 0.15s ease;
+}
+
+.cover-thumb[aria-checked='true'] {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+
+/* la etiqueta, para que se lea como una tapa */
+.cover-thumb-label {
+  position: absolute;
+  top: 21%;
+  right: 13%;
+  left: 13%;
+  z-index: 3;
+  height: 17%;
+  border-radius: 1.5px;
+  background: var(--paper);
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.35);
+}
+
+[data-cover-style='strap'] > .cover-thumb-label {
+  right: 21%;
+}
+
+[data-cover-style='spine'] > .cover-thumb-label,
+[data-cover-style='spots'] > .cover-thumb-label {
+  left: 19%;
+}
+
+/* En chico el jaspeado y el marco gofrado se escalan para seguir leyéndose nítidos. */
+.cover-thumb[data-cover-style='spots'] > .cover-skin::before {
+  mask-size: 280% 280%;
+}
+
+.cover-thumb[data-cover-style='leather'] > .cover-over::before {
+  inset: 2.5px;
+  border-width: 1px;
+  border-radius: 2px;
+}
+
+/* imágenes pegadas, cara por cara */
+.row.sticker-row {
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  animation: fade 0.2s ease;
+}
+
+.sticker-face {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.sticker-face > span {
+  flex: none;
+  width: 76px;
+  padding-top: 13px;
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+.sticker-chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sticker-chip {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  background: var(--fill);
+  animation: fade 0.2s ease;
+}
+
+.sticker-chip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+}
+
+.sticker-chip button {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 0.5px var(--hairline), 0 1px 2px rgba(0, 0, 0, 0.25);
+  color: var(--label-2);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.sticker-chip button:hover {
+  background: var(--danger);
+  color: #fff;
+}

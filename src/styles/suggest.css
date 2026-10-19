@@ -1,0 +1,229 @@
+/* ---- Ajustes: sugerir categorías a partir de las notas ------------------------ */
+
+.suggest-go,
+.suggest-ai {
+  justify-content: center;
+}
+
+.suggest-go {
+  min-width: 148px;
+}
+
+.suggest-ai {
+  min-width: 136px;
+}
+
+.suggest-row .row-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* La lista se abre debajo del botón creciendo desde cero, sin empujar de golpe lo de abajo. */
+.suggest-panel {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: suggest-open 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.suggest-panel.leaving {
+  animation: suggest-close 0.24s ease forwards;
+}
+
+.suggest-panel-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.suggest-body {
+  border-top: 0.5px solid var(--hairline);
+}
+
+@keyframes suggest-open {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+@keyframes suggest-close {
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.suggest-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Cada sugerencia: casilla, nombre (editable) y cuántas hojas; debajo, las palabras y ejemplos. */
+.suggest-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 10px 14px;
+  animation: fade 0.28s ease backwards;
+}
+
+.suggest-item + .suggest-item {
+  border-top: 0.5px solid var(--hairline);
+}
+
+.suggest-title,
+.suggest-count,
+.suggest-words,
+.suggest-samples {
+  transition: opacity 0.15s ease;
+}
+
+.suggest-item.off .suggest-title,
+.suggest-item.off .suggest-count,
+.suggest-item.off .suggest-words,
+.suggest-item.off .suggest-samples {
+  opacity: 0.45;
+}
+
+.suggest-check {
+  display: grid;
+  grid-row: 1;
+  place-items: center;
+  justify-self: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: var(--fill-strong);
+  color: transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.suggest-check[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.suggest-check:disabled {
+  opacity: 0.55;
+}
+
+.suggest-title {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Del color que va a tener la categoría si se crea. */
+.suggest-title .dot {
+  transition: background-color 0.25s ease;
+}
+
+.suggest-title input:not([type='color']):not([type='search']) {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  margin-left: -6px;
+  padding: 0 6px;
+  background: none;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.suggest-title input:not([type='color']):not([type='search']):hover,
+.suggest-title input:not([type='color']):not([type='search']):focus {
+  background: var(--fill);
+}
+
+.suggest-title input[aria-invalid='true'] {
+  color: var(--danger);
+}
+
+.suggest-count {
+  grid-column: 3;
+  grid-row: 1;
+  color: var(--label-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.suggest-item.done .suggest-count {
+  color: var(--green);
+}
+
+.suggest-words,
+.suggest-samples {
+  grid-column: 2 / span 2;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.suggest-words {
+  grid-row: 2;
+  color: var(--label-2);
+}
+
+.suggest-samples {
+  grid-row: 3;
+  overflow: hidden;
+  color: var(--label-3);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggest-empty {
+  margin: 0;
+  padding: 14px 14px 4px;
+  color: var(--label-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+  user-select: text;
+}
+
+.suggest-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px 14px;
+}
+
+.suggest-list + .suggest-actions {
+  border-top: 0.5px solid var(--hairline);
+}
+
+.suggest-note {
+  flex: 1;
+  min-width: 0;
+  color: var(--label-2);
+  font-size: 12px;
+  transition: color 0.15s ease;
+}
+
+.suggest-note.warn {
+  color: var(--warn);
+}
+
+.suggest-note[role='alert'] {
+  color: var(--danger);
+  user-select: text;
+}
+
+/* Con el indicador de espera adentro, el botón no cambia de ancho. */
+.suggest-create {
+  justify-content: center;
+  min-width: 140px;
+}

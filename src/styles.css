@@ -1,0 +1,3152 @@
+/* Book — la ventana es un cuaderno sobre la mesa. El cuaderno es lo único con presencia;
+   todo lo demás (buscar, filtrar, ajustar) aparece cuando se lo pide y se va.
+   Tipografía y controles siguen el lenguaje de macOS/iOS. */
+
+:root {
+  color-scheme: light;
+
+  --font: -apple-system, BlinkMacSystemFont, 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+
+  /* mesa y controles */
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --label: #1d1d1f;
+  --label-2: rgba(60, 60, 67, 0.72);
+  --label-3: rgba(60, 60, 67, 0.46);
+  --hairline: rgba(60, 60, 67, 0.14);
+  --fill: rgba(120, 120, 128, 0.12);
+  --fill-strong: rgba(120, 120, 128, 0.2);
+  --raised: #ffffff;
+  /* Con la tapa de fábrica el acento es azul. Con una tapa de color, applyPrefs (hooks.ts)
+     pone --accent, --accent-soft y --on-accent calculados a partir de ese color. */
+  --accent: #007aff;
+  --accent-soft: rgba(0, 122, 255, 0.14);
+  --on-accent: #fff;
+  --danger: #b84437;
+  --green: #34c759;
+  --warn: #a14a00;
+  --warn-bg: rgba(255, 149, 0, 0.16);
+  --shadow-soft: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.05);
+  --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 12px 40px rgba(0, 0, 0, 0.18);
+
+  /* cuaderno */
+  --cover: #2b2c31;
+  --paper: #fffefa;
+  --paper-edge: #dcd9d0;
+  --rule: rgba(64, 120, 196, 0.17);
+  --margin-line: rgba(232, 84, 84, 0.4);
+  --fold: rgba(60, 50, 30, 0.13);
+  /* Letra de las hojas y alto del renglón (el rayado va a la misma medida). Estos son los
+     de la letra mediana; applyPrefs (hooks.ts) pone los del tamaño elegido, que salen de
+     la tabla de layout.ts. */
+  --line: 28px;
+  --text: 14.5px;
+}
+
+:root[data-theme='dark'] {
+    color-scheme: dark;
+    --bg: #1c1c1e;
+    --surface: #2c2c2e;
+    --label: #f5f5f7;
+    --label-2: rgba(235, 235, 245, 0.66);
+    --label-3: rgba(235, 235, 245, 0.4);
+    --hairline: rgba(120, 120, 128, 0.36);
+    --fill: rgba(120, 120, 128, 0.22);
+    --fill-strong: rgba(120, 120, 128, 0.36);
+    --raised: #636366;
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, 0.24);
+    --on-accent: #fff;
+    --danger: #d95f52;
+    --green: #30d158;
+    --warn: #ffb340;
+    --warn-bg: rgba(255, 159, 10, 0.18);
+    --shadow-soft: 0 0 0 0.5px rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
+
+    --cover: #0d0d0f;
+    --paper: #2a2a2d;
+    --paper-edge: #1b1b1e;
+    --rule: rgba(150, 182, 235, 0.13);
+    --margin-line: rgba(255, 105, 97, 0.32);
+    --fold: rgba(0, 0, 0, 0.3);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--label);
+  font: 13px/1.4 var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+button {
+  cursor: default;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: var(--fill-strong);
+  background-clip: content-box;
+}
+
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+.spin.late {
+  animation:
+    spin 0.9s linear infinite,
+    fade 0.3s 0.3s backwards;
+}
+
+/* ---- ventana ----------------------------------------------------------- */
+
+/* La ventana mide exactamente lo que el cuaderno más una franja de mesa alrededor
+   (ver layout.ts). No tiene barra de título: se arrastra desde la mesa o la tapa. */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---- cuaderno ---------------------------------------------------------- */
+
+.stage {
+  position: relative;
+  display: grid;
+  flex: 1;
+  place-items: start center;
+  min-height: 0;
+  padding: 36px 24px 32px;
+}
+
+.stage.no-tabs {
+  padding-top: 18px;
+}
+
+/* El tamaño lo fija layout.ts; la sombra entra entera en la franja de mesa. */
+.book {
+  position: relative;
+  display: grid;
+  flex: none;
+  padding: 9px 10px 11px;
+  border-radius: 16px;
+  background: var(--cover);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 1px 3px rgba(0, 0, 0, 0.2),
+    0 10px 20px rgba(0, 0, 0, 0.16);
+  transition:
+    background-color 0.25s ease,
+    opacity 0.16s ease;
+}
+
+/* Mientras la ventana cambia de tamaño el cuaderno se desvanece, así no se ve el salto. */
+.app.resizing .book {
+  opacity: 0;
+  transition-duration: 0.1s;
+}
+
+/* La mesa, el borde de la tapa y la franja de las solapas mueven la ventana. */
+.stage,
+.book,
+.tabs {
+  cursor: grab;
+}
+
+.stage:active,
+.book:active,
+.tabs:active,
+.cover:active {
+  cursor: grabbing;
+}
+
+.book.single {
+  padding-left: 24px;
+}
+
+.book.closed {
+  padding: 0;
+}
+
+.leaves {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  animation: book-in 0.24s ease;
+}
+
+.book.double .leaves {
+  grid-template-columns: 1fr 1fr;
+}
+
+.leaves.leaving,
+.cover.leaving {
+  animation: book-out 0.16s ease forwards;
+}
+
+/* ---- solapas: filtran el cuaderno por categoría ---- */
+
+.tabs {
+  position: absolute;
+  top: -25px;
+  right: 16px;
+  left: 16px;
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 26px;
+  container-type: inline-size;
+}
+
+.book.single .tabs {
+  left: 30px;
+}
+
+.tab {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 8px;
+  height: 20px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 7px 7px 0 0;
+  box-shadow: inset 0 -6px 6px -6px rgba(0, 0, 0, 0.28);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.78;
+  transition:
+    height 0.14s ease,
+    opacity 0.14s ease;
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab:hover {
+  height: 23px;
+  opacity: 1;
+}
+
+.tab.active {
+  flex-shrink: 0;
+  height: 26px;
+  box-shadow: none;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.tab.icon-only {
+  flex: none;
+  width: 30px;
+  padding: 0;
+}
+
+.tab.at-end {
+  margin-left: auto;
+}
+
+.tab.at-end ~ .tab.at-end {
+  margin-left: 0;
+}
+
+/* con poco ancho solo la solapa activa muestra su nombre; las demás son su color */
+@container (max-width: 760px) {
+  .tab:not(.active) .tab-name {
+    display: none;
+  }
+
+  .tab:not(.active):not(.icon-only) {
+    width: 22px;
+    padding: 0;
+  }
+}
+
+/* ---- hojas ---- */
+
+.page {
+  position: relative;
+  min-width: 0;
+  background: var(--paper);
+  transition: background-color 0.25s ease;
+}
+
+.page.left {
+  border-radius: 8px 2px 2px 8px;
+  box-shadow: -2px 0 0 -0.5px var(--paper-edge), -4px 0 0 -1px var(--paper-edge);
+}
+
+.page.right {
+  border-radius: 2px 8px 8px 2px;
+  box-shadow: 2px 0 0 -0.5px var(--paper-edge), 4px 0 0 -1px var(--paper-edge);
+}
+
+.page.only {
+  border-radius: 4px 8px 8px 4px;
+  box-shadow: 2px 0 0 -0.5px var(--paper-edge), 4px 0 0 -1px var(--paper-edge);
+}
+
+/* margen rojo, de punta a punta de la hoja */
+.page::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 46px;
+  z-index: 1;
+  width: 1px;
+  background: var(--margin-line);
+  content: '';
+  pointer-events: none;
+}
+
+.page.only::before {
+  left: 58px;
+}
+
+/* sombra del pliegue entre las dos hojas */
+.page.left::after,
+.page.right::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 46px;
+  content: '';
+  pointer-events: none;
+}
+
+.page.left::after {
+  right: 0;
+  background: linear-gradient(to left, var(--fold), transparent);
+}
+
+.page.right::after {
+  left: 0;
+  background: linear-gradient(to right, var(--fold), transparent);
+}
+
+/* Las hojas del secret-book y de la papelera se reconocen de un vistazo:
+   papel distinto, una franja arriba y un cartel con su nombre. */
+.page.secret {
+  background: color-mix(in srgb, var(--paper) 86%, #5b5f8a);
+  box-shadow: inset 0 4px 0 #3a3a3c;
+}
+
+.page.trash {
+  background:
+    repeating-linear-gradient(135deg, transparent 0 13px, rgba(120, 120, 128, 0.07) 13px 14px),
+    color-mix(in srgb, var(--paper) 88%, #8e8e93);
+  box-shadow: inset 0 4px 0 #aeaeb2;
+}
+
+.page-mode {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  max-width: calc(100% - 16px);
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: fade 0.24s ease;
+}
+
+.page-mode.secret {
+  background: #3a3a3c;
+  color: #fff;
+}
+
+.page-mode.trash {
+  background: #aeaeb2;
+  color: #1d1d1f;
+}
+
+.page-mode button {
+  margin: 0 -4px 0 4px;
+  padding: 1px 7px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+}
+
+.page-mode button:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.page.trash .page-title {
+  color: var(--label-2);
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+
+.flow-clip.trash .page-text {
+  color: var(--label-2);
+}
+
+/* Pasar página con un clic: solo en una franja de cada borde de afuera. La izquierda
+   vuelve y la derecha avanza. Van por encima del texto (el cursor avisa antes del clic)
+   y por debajo de los botones del papel. */
+.turn-zone {
+  position: absolute;
+  z-index: 2;
+}
+
+.turn-zone.prev {
+  left: 0;
+}
+
+.turn-zone.next {
+  right: 0;
+}
+
+.turn-zone.prev {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='white' fill-opacity='.94' stroke='black' stroke-opacity='.2'/><path d='M18.5 10l-6 6 6 6' fill='none' stroke='%231d1d1f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>") 16 16, w-resize;
+}
+
+.turn-zone.next,
+.cover {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='white' fill-opacity='.94' stroke='black' stroke-opacity='.2'/><path d='M13.5 10l6 6-6 6' fill='none' stroke='%231d1d1f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>") 16 16, e-resize;
+}
+
+.page-lines {
+  position: absolute;
+  right: 0;
+  left: 0;
+  background-image: linear-gradient(to bottom, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px));
+  background-size: 100% var(--line);
+  pointer-events: none;
+}
+
+/* Encabezado de la nota: tapa el rayado de los renglones que ocupa. Deja pasar los
+   clics a la hoja salvo en sus propios controles. */
+.page-head {
+  position: absolute;
+  right: 0;
+  left: 0;
+  padding-bottom: 9px;
+  background: inherit;
+  pointer-events: none;
+  transition: opacity 0.09s ease;
+  animation: fade 0.24s ease;
+}
+
+.page-head.fading,
+.flow-clip.fading {
+  opacity: 0;
+}
+
+.page-head button,
+.page-head .menu,
+.page-title {
+  pointer-events: auto;
+}
+
+.page-date {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--label-2);
+  font-size: 12.5px;
+}
+
+.page-date span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-date time {
+  flex: none;
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.page-title {
+  width: fit-content;
+  max-width: 100%;
+  margin: 1px 0 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+  cursor: text;
+}
+
+.page-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 5px;
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+.page-source {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  margin-right: 2px;
+}
+
+.chip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.chip:hover {
+  background: var(--fill-strong);
+}
+
+.chip.unset {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--label-2);
+}
+
+.chip.unset:hover {
+  background: var(--fill);
+}
+
+.chip.action-chip {
+  background: var(--fill);
+  color: var(--accent);
+  font-weight: 550;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.chip.action-chip:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.page-error {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+  user-select: text;
+}
+
+.badge {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 11.5px;
+}
+
+.badge.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+/* El texto fluye en columnas del ancho de una hoja; el recorte deja ver las abiertas. */
+.flow-clip {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.09s ease;
+}
+
+/* Nota que ya no se ve pero conserva una selección empezada en ella. */
+.flow-clip.parked {
+  left: -200vw !important;
+}
+
+.flow {
+  column-fill: auto;
+}
+
+.flow-spacer {
+  break-inside: avoid;
+}
+
+.page-text {
+  margin: 0;
+  color: var(--label);
+  font: var(--text) / var(--line) var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+  orphans: 1;
+  widows: 1;
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
+}
+
+/* Pie de la hoja: dónde estamos en el cuaderno y, si hay, los filtros activos. */
+.page-foot {
+  position: absolute;
+  bottom: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+  color: var(--label-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.page-foot-main {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.pill {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: auto;
+  animation: fade 0.2s ease;
+}
+
+.page-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 0 44px 0 74px;
+  color: var(--label-3);
+  text-align: center;
+  pointer-events: none;
+  animation: fade 0.3s ease;
+}
+
+.page-empty h2 {
+  margin: 8px 0 0;
+  color: var(--label);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.page-empty p {
+  margin: 0;
+  color: var(--label-2);
+  line-height: 1.45;
+}
+
+/* Controles sobre el papel, en la franja de arriba: a la izquierda los del cuaderno
+   (cerrarlo, cerrar la ventana), a la derecha los de las hojas (buscar, nueva hoja, menú). */
+.page-controls,
+.page-actions {
+  position: absolute;
+  top: 3px;
+  z-index: 3;
+  display: flex;
+  gap: 1px;
+}
+
+.page-actions {
+  right: 8px;
+}
+
+.page-controls .icon-button,
+.page-actions > .icon-button,
+.page-actions .menu > .icon-button {
+  color: var(--label-3);
+}
+
+.page-controls .icon-button:hover,
+.page-actions .icon-button:hover,
+.page-actions .icon-button[aria-expanded='true'] {
+  color: var(--label);
+}
+
+/* La tapa y la contratapa del cuaderno cerrado están en styles/cover.css. */
+
+/* espiral de la vista de una hoja */
+.spiral {
+  position: absolute;
+  top: 30px;
+  bottom: 30px;
+  left: 7px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 36px;
+  pointer-events: none;
+}
+
+.spiral i {
+  position: relative;
+  display: block;
+  height: 12px;
+}
+
+.spiral i::before {
+  position: absolute;
+  top: 1px;
+  left: 24px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cover);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+  content: '';
+}
+
+.spiral i::after {
+  position: absolute;
+  top: 2.5px;
+  left: 0;
+  width: 30px;
+  height: 7px;
+  border-radius: 4px;
+  background: linear-gradient(to bottom, #fbfbfc, #c7c9cf 45%, #878a93);
+  box-shadow: 0 1.5px 2px rgba(0, 0, 0, 0.38);
+  content: '';
+}
+
+/* ---- controles --------------------------------------------------------- */
+
+.icon-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--label-2);
+}
+
+.icon-button:hover,
+.icon-button[aria-expanded='true'] {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.segmented {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 2px;
+  overflow-x: auto;
+  border-radius: 9px;
+  background: var(--fill);
+}
+
+.segmented button {
+  flex: none;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--label);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.segmented button[aria-selected='true'] {
+  background: var(--raised);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: var(--fill-strong);
+  transition: background 0.2s ease;
+}
+
+.switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  content: '';
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease;
+}
+
+.switch[aria-checked='true'] {
+  background: var(--accent);
+}
+
+/* La perilla encendida es del color del texto sobre el acento: se ve aunque la tapa sea clara. */
+.switch[aria-checked='true']::after {
+  background: var(--on-accent);
+  transform: translateX(16px);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  background: var(--fill);
+}
+
+.stepper button {
+  width: 30px;
+  height: 28px;
+  border: 0;
+  background: none;
+  color: var(--label);
+  font: inherit;
+  font-size: 16px;
+}
+
+.stepper button:disabled {
+  color: var(--label-3);
+}
+
+.stepper output {
+  min-width: 26px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: center;
+}
+
+.button {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.button:hover {
+  background: var(--fill-strong);
+}
+
+.button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button.danger {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+}
+
+.button.danger:hover {
+  filter: brightness(0.92);
+}
+
+.button.small {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.button:disabled {
+  opacity: 0.45;
+}
+
+input:not([type='color']):not([type='search']) {
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  outline: none;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  user-select: text;
+}
+
+input:not([type='color']):not([type='search']):focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--fill);
+  color: var(--label-3);
+  transition: box-shadow 0.15s ease;
+}
+
+.search:focus-within {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--label);
+  font: inherit;
+  font-size: 14px;
+  user-select: text;
+}
+
+.search input::placeholder {
+  color: var(--label-3);
+}
+
+/* ---- menú -------------------------------------------------------------- */
+
+.menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 224px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: saturate(180%) blur(24px);
+  box-shadow: var(--shadow-pop);
+  animation: pop 0.12s ease-out;
+}
+
+.menu-list.leaving,
+.color-panel.leaving {
+  animation: pop-out 0.11s ease-in forwards;
+}
+
+.menu-list.left {
+  right: auto;
+  left: 0;
+}
+
+.menu-heading {
+  padding: 5px 9px 6px;
+  color: var(--label-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.menu-item {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--label);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu-item:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.menu-item.danger {
+  color: var(--danger);
+}
+
+.menu-item.danger:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.menu-item.separated {
+  margin-top: 9px;
+}
+
+.menu-item.separated::before {
+  position: absolute;
+  top: -5px;
+  right: 6px;
+  left: 6px;
+  height: 0.5px;
+  background: var(--hairline);
+  content: '';
+}
+
+.menu-row {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 4px 0 32px;
+  white-space: nowrap;
+}
+
+.menu-row.separated {
+  margin-top: 9px;
+}
+
+.menu-row.separated::before {
+  position: absolute;
+  top: -5px;
+  right: 6px;
+  left: 6px;
+  height: 0.5px;
+  background: var(--hairline);
+  content: '';
+}
+
+.menu-row .menu-label {
+  flex: none;
+}
+
+.menu-choices {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--fill);
+}
+
+.menu-choices button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--label);
+  font: inherit;
+  font-size: 12px;
+}
+
+.menu-choices button:hover {
+  background: var(--fill);
+}
+
+.menu-choices button[aria-checked='true'] {
+  background: var(--raised);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.14);
+  font-weight: 600;
+}
+
+.menu-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  font-size: 12px;
+}
+
+.menu-label {
+  flex: 1;
+}
+
+.menu-item kbd {
+  margin-left: 18px;
+  color: var(--label-3);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.menu-item:hover kbd {
+  color: color-mix(in srgb, var(--on-accent) 75%, transparent);
+}
+
+/* ---- hojas modales ----------------------------------------------------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  animation: fade 0.15s ease-out;
+}
+
+.backdrop.leaving {
+  animation: fade-out 0.17s ease-in forwards;
+}
+
+.backdrop.leaving .modal {
+  animation: sink 0.17s ease-in forwards;
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(540px, calc(100vw - 24px));
+  max-height: calc(100vh - 28px);
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: var(--shadow-pop);
+  animation: rise 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.modal.wide {
+  width: min(820px, calc(100vw - 24px));
+}
+
+.modal-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px 10px 20px;
+}
+
+.modal-header-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.modal-footer {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  padding: 14px 20px 18px;
+}
+
+.hint {
+  flex: 1;
+  color: var(--label-3);
+  font-size: 11.5px;
+}
+
+.form-error {
+  margin: 8px 20px 0;
+  color: var(--danger);
+  font-size: 12px;
+  user-select: text;
+}
+
+/* ---- versiones ---------------------------------------------------------- */
+
+.versions {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 2px 20px 0;
+}
+
+.versions-text {
+  flex: 1;
+  height: min(420px, calc(100vh - 260px));
+  margin: 0;
+  padding: 14px 16px;
+  overflow-y: auto;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 0 0 0.5px var(--hairline);
+  color: var(--label);
+  font: var(--text) / 1.55 var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  cursor: text;
+}
+
+/* ---- buscar y filtrar -------------------------------------------------- */
+
+.finder {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+  padding: 2px 20px 6px;
+  overflow-y: auto;
+}
+
+.finder-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 248px;
+  gap: 28px;
+}
+
+.finder h3 {
+  margin: 0 0 10px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dividers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.divider {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  height: 30px;
+  padding: 0 11px 0 10px;
+  border: 0;
+  border-radius: 15px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+}
+
+.divider:hover {
+  background: var(--fill-strong);
+}
+
+.divider .dot {
+  background: var(--divider);
+}
+
+.divider-count {
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.divider.active,
+.divider.active:hover {
+  background: var(--divider);
+  color: var(--divider-ink);
+}
+
+.divider.active .dot {
+  background: currentColor;
+}
+
+.divider.active .divider-count {
+  color: inherit;
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.calendar-head strong {
+  font-weight: 650;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar-weekday {
+  padding: 4px 0;
+  color: var(--label-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--label);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.calendar-day:disabled {
+  color: var(--label-3);
+  font-weight: 400;
+}
+
+.calendar-day:not(:disabled):hover {
+  background: var(--fill);
+}
+
+.calendar-day.today {
+  color: var(--accent);
+}
+
+.calendar-day.selected,
+.calendar-day.selected:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---- ajustes ----------------------------------------------------------- */
+
+.settings-layout {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.settings-tabs {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  padding: 0 20px 14px;
+  border-bottom: 0.5px solid var(--hairline);
+}
+
+.settings-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 22px;
+  min-height: 0;
+  height: min(540px, calc(100vh - 132px));
+  padding: 18px 20px 26px;
+  overflow-y: auto;
+}
+
+.settings-body > .form-error {
+  margin: 0 12px;
+}
+
+.group h3 {
+  margin: 0 0 6px 14px;
+  color: var(--label-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.group-body {
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 0 0 0.5px var(--hairline);
+}
+
+.group-footer {
+  margin: 7px 14px 0;
+  color: var(--label-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+}
+
+.row + .row {
+  border-top: 0.5px solid var(--hairline);
+}
+
+.row-text {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.row-text span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.row-text small {
+  color: var(--label-2);
+  font-size: 11.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  user-select: text;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.row-control {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  max-width: 100%;
+}
+
+/* varias teclas para lo mismo: si no entran en un renglón, siguen abajo */
+.row-control:has(kbd.keys) {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  justify-content: flex-end;
+}
+
+.row-count {
+  color: var(--label-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-action {
+  width: 100%;
+  gap: 8px;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+}
+
+.row-action:first-child {
+  border-top: 0;
+}
+
+.add-row {
+  flex-wrap: wrap;
+}
+
+.inline-form {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.inline-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.swatch-button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.3);
+}
+
+.swatch-button[aria-checked='true'] {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+
+.category-fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.category-fields input:not([type='color']):not([type='search']) {
+  height: 24px;
+  margin-left: -6px;
+  padding: 0 6px;
+  background: none;
+}
+
+.category-fields input:first-child {
+  font-weight: 600;
+}
+
+.category-fields input:last-child {
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+.category-fields input:not([type='color']):not([type='search']):hover,
+.category-fields input:not([type='color']):not([type='search']):focus {
+  background: var(--fill);
+}
+
+/* ---- selector de color -------------------------------------------------- */
+
+.bucket {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: var(--fill);
+  color: var(--label-2);
+}
+
+.bucket:hover,
+.bucket[aria-expanded='true'] {
+  background: var(--fill-strong);
+  color: var(--label);
+}
+
+.bucket.active {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+  color: var(--accent);
+}
+
+.color-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 12px;
+  width: 236px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  animation: pop 0.14s ease-out;
+}
+
+.color-plane {
+  position: relative;
+  height: 132px;
+  border-radius: 9px;
+  background:
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, hsl(var(--hue) 100% 50%));
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.color-thumb {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.color-panel input.color-hue {
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  border-radius: 6px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  appearance: none;
+}
+
+.color-hue::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.4);
+  appearance: none;
+}
+
+.color-suggested {
+  display: flex;
+  justify-content: space-between;
+}
+
+.color-suggested .swatch-button {
+  width: 17px;
+  height: 17px;
+}
+
+.color-code {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-panel .color-code input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* ---- ventana propia de los ajustes ---------------------------------------- */
+
+.settings-window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: 16px;
+}
+
+.settings-window .settings-body {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.row-control input.name-input {
+  width: 220px;
+}
+
+kbd.keys {
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.button.quiet {
+  background: none;
+  color: var(--label-2);
+}
+
+.button.quiet:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+
+/* ---- escribir en la hoja ------------------------------------------------- */
+
+/* Mientras se escribe, el texto es del cursor: lo maneja el navegador, no la interfaz. */
+.page-text.editing {
+  min-height: var(--line);
+  outline: none;
+  caret-color: var(--accent);
+}
+
+.page-text.editing:empty::before {
+  color: var(--label-3);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+/* La hoja que se escribe se reconoce de un vistazo: toda ella es del cursor de texto y
+   lleva arriba una franja y un cartel del color del cuaderno. «Escribiendo» y «Hoja
+   nueva» se distinguen por el ícono y el texto, no por el color. */
+.page.writing {
+  cursor: text;
+}
+
+.write-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: 3px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: var(--accent);
+  pointer-events: none;
+  animation: fade 0.2s ease;
+}
+
+.page-mode.write,
+.page-mode.new {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+}
+
+/* El botón del cartel va con los mismos dos colores, al revés. */
+.page-mode.write button,
+.page-mode.new button {
+  background: color-mix(in srgb, var(--on-accent, #fff) 90%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.page-mode.write button:hover,
+.page-mode.new button:hover {
+  background: var(--on-accent, #fff);
+}
+
+.page-mode.edit-banner {
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.page-mode.edit-banner button.banner-tool,
+.page-mode.edit-banner button.dict-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 6px;
+  margin: 0 1px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--on-accent, #fff);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.page-mode.edit-banner button.banner-tool:hover,
+.page-mode.edit-banner button.dict-btn:hover {
+  background: rgba(255, 255, 255, 0.38);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: var(--on-accent, #fff);
+}
+
+.page-mode.edit-banner button.banner-tool.active {
+  background: var(--on-accent, #fff);
+  color: var(--accent);
+  border-color: var(--on-accent, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+/* Escribiendo no se pasa página con clics en el papel: para eso están estas flechas. */
+.leaves .turn-button {
+  position: absolute;
+  bottom: 4px;
+  z-index: 3;
+  width: 26px;
+  height: 24px;
+  color: var(--label-3);
+  cursor: default;
+  animation: fade 0.2s ease;
+}
+
+.leaves .turn-button.next {
+  right: 0;
+}
+
+.leaves .turn-button:hover:not(:disabled) {
+  color: var(--label);
+}
+
+.leaves .turn-button:disabled {
+  opacity: 0.3;
+}
+
+/* Título que se puede cambiar: el nombre, y al lado la extensión del archivo. */
+.page-title.editable {
+  display: flex;
+  align-items: baseline;
+  height: 25px;
+  margin-left: -6px;
+  overflow: visible;
+  border-radius: 6px;
+  pointer-events: auto;
+  transition: background-color 0.15s ease;
+}
+
+.page-title.editable:hover,
+.page-title.editable:focus-within {
+  background: var(--fill);
+}
+
+.page-head .page-title.editable input,
+.loose-head .page-title.editable input {
+  min-width: 3ch;
+  max-width: 100%;
+  height: 25px;
+  padding: 0 1px 0 6px;
+  background: none;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  field-sizing: content;
+}
+
+.page-head .page-title.editable input:focus,
+.loose-head .page-title.editable input:focus {
+  box-shadow: none;
+}
+
+.page-title.editable span {
+  flex: none;
+  padding-right: 7px;
+  color: var(--label-3);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Al pie: cómo va el guardado. */
+.write-status {
+  color: var(--label-2);
+}
+
+.write-status.error,
+.write-status.conflict {
+  color: var(--danger);
+}
+
+.page-mode.conflict {
+  padding-right: 5px;
+  background: #ffd9a0;
+  color: #4a2500;
+}
+
+.page-mode.conflict button {
+  margin: 0 0 0 4px;
+}
+
+/* Aviso pasajero sobre las hojas. */
+.toast {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  z-index: 6;
+  width: max-content;
+  max-width: min(440px, calc(100% - 56px));
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--label) 90%, transparent);
+  box-shadow: var(--shadow-pop);
+  color: var(--paper);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: center;
+  transform: translateX(-50%);
+  cursor: default;
+  pointer-events: none;
+  animation: toast-in 0.2s ease;
+}
+
+.toast.leaving {
+  animation: fade-out 0.17s ease-in forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+}
+
+/* ---- modo tamaño --------------------------------------------------------- */
+
+/* Manteniendo Mayús aparecen agarraderas en los bordes y las esquinas de la ventana. Al
+   arrastrar una, un fantasma (una ventana aparte, ver ghost.rs) muestra el tamaño nuevo;
+   el cuaderno no cambia hasta que se suelta Mayús. Fuera de ese modo las agarraderas no
+   existen para el mouse: la mesa sigue sirviendo para mover la ventana. */
+.grip {
+  position: absolute;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.app.sizing .grip {
+  pointer-events: auto;
+}
+
+.grip::after {
+  position: absolute;
+  border-radius: 2px;
+  background: var(--label-2);
+  content: '';
+  opacity: 0;
+  transition:
+    opacity 0.14s ease,
+    background-color 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.app.sizing .grip::after {
+  opacity: 1;
+}
+
+.app.sizing .grip:hover::after,
+.app.sizing .grip:active::after {
+  border-color: var(--accent);
+  background-color: var(--accent);
+}
+
+.grip.n,
+.grip.s {
+  right: 44px;
+  left: 44px;
+  cursor: ns-resize;
+}
+
+.grip.e,
+.grip.w {
+  top: 44px;
+  bottom: 44px;
+  width: 34px;
+  cursor: ew-resize;
+}
+
+.grip.n {
+  top: 0;
+  height: 46px;
+}
+
+.stage.no-tabs .grip.n {
+  height: 28px;
+}
+
+.grip.s {
+  bottom: 0;
+  height: 42px;
+}
+
+.grip.e {
+  right: 0;
+}
+
+.grip.w {
+  left: 0;
+}
+
+/* barras en el medio de cada borde, sobre la franja de mesa */
+.grip.n::after,
+.grip.s::after {
+  left: calc(50% - 20px);
+  width: 40px;
+  height: 4px;
+}
+
+.grip.n::after {
+  top: 6px;
+}
+
+.grip.s::after {
+  bottom: 12px;
+}
+
+.grip.e::after,
+.grip.w::after {
+  top: calc(50% - 20px);
+  width: 4px;
+  height: 40px;
+}
+
+.grip.e::after {
+  right: 9px;
+}
+
+.grip.w::after {
+  left: 9px;
+}
+
+.grip.nw,
+.grip.ne,
+.grip.sw,
+.grip.se {
+  width: 44px;
+  height: 44px;
+}
+
+/* escuadras en las esquinas */
+.grip.nw::after,
+.grip.ne::after,
+.grip.sw::after,
+.grip.se::after {
+  width: 15px;
+  height: 15px;
+  border: 0 solid var(--label-2);
+  border-radius: 0;
+  background: none;
+}
+
+.app.sizing .grip.nw:hover::after,
+.app.sizing .grip.ne:hover::after,
+.app.sizing .grip.sw:hover::after,
+.app.sizing .grip.se:hover::after,
+.app.sizing .grip.nw:active::after,
+.app.sizing .grip.ne:active::after,
+.app.sizing .grip.sw:active::after,
+.app.sizing .grip.se:active::after {
+  background: none;
+}
+
+.grip.nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.grip.nw::after {
+  top: 6px;
+  left: 8px;
+  border-top-width: 4px;
+  border-left-width: 4px;
+  border-top-left-radius: 7px;
+}
+
+.grip.se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.grip.se::after {
+  right: 8px;
+  bottom: 11px;
+  border-right-width: 4px;
+  border-bottom-width: 4px;
+  border-bottom-right-radius: 7px;
+}
+
+.grip.ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.grip.ne::after {
+  top: 6px;
+  right: 8px;
+  border-top-width: 4px;
+  border-right-width: 4px;
+  border-top-right-radius: 7px;
+}
+
+.grip.sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.grip.sw::after {
+  bottom: 11px;
+  left: 8px;
+  border-bottom-width: 4px;
+  border-left-width: 4px;
+  border-bottom-left-radius: 7px;
+}
+
+/* Cartel del modo tamaño: qué tamaño quedaría y qué hacer. */
+.size-hud {
+  position: fixed;
+  bottom: 46px;
+  left: 50%;
+  z-index: 45;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  max-width: calc(100% - 32px);
+  padding: 7px 13px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(24px);
+  box-shadow: var(--shadow-pop);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: fade 0.14s ease;
+}
+
+.size-hud strong {
+  font-weight: 650;
+}
+
+.size-hud-box {
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.size-hud-hint {
+  overflow: hidden;
+  padding-left: 9px;
+  border-left: 0.5px solid var(--hairline);
+  color: var(--label-2);
+  text-overflow: ellipsis;
+}
+
+/* ---- hoja suelta: la ventana del atajo para anotar desde cualquier programa ---- */
+
+/* Se ve como una hoja arrancada del cuaderno: mismo papel, mismo rayado, mismo margen,
+   y las perforaciones del espiral a la izquierda. */
+.loose {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--paper-edge);
+}
+
+.loose::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 46px;
+  width: 1px;
+  background: var(--margin-line);
+  content: '';
+  pointer-events: none;
+}
+
+.loose::after {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 14px;
+  width: 12px;
+  background: radial-gradient(circle at 6px 14px, color-mix(in srgb, var(--label) 24%, transparent) 0 3.5px, transparent 4px) 0 0 / 12px 28px repeat-y;
+  content: '';
+  pointer-events: none;
+}
+
+.loose-head {
+  flex: none;
+  padding: 14px 16px 9px 62px;
+  cursor: grab;
+}
+
+.loose-head:active {
+  cursor: grabbing;
+}
+
+.loose-head time {
+  pointer-events: none;
+}
+
+.loose-text {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 18px 0 62px;
+  border: 0;
+  background: linear-gradient(to bottom, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px)) local 0 0 / 100% var(--line);
+  color: var(--label);
+  font: var(--text) / var(--line) var(--font);
+  resize: none;
+  user-select: text;
+}
+
+.loose-text:focus-visible {
+  outline: none;
+}
+
+.loose-text::placeholder {
+  color: var(--label-3);
+}
+
+.loose .form-error {
+  margin: 4px 18px 0 62px;
+}
+
+.loose-foot {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 0 8px 0 62px;
+  color: var(--label-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.loose-foot > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loose-actions {
+  display: flex;
+  flex: none;
+  gap: 1px;
+}
+
+.loose .icon-button:disabled {
+  opacity: 0.35;
+}
+
+/* ---- movimiento -------------------------------------------------------- */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+}
+
+@keyframes sink {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+/* Abrir y cerrar el cuaderno: la tapa o las hojas se desvanecen y entra lo otro. */
+@keyframes book-in {
+  from {
+    opacity: 0;
+    transform: scale(0.992);
+  }
+}
+
+@keyframes book-out {
+  to {
+    opacity: 0;
+    transform: scale(0.992);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+
+/* Pasar página: responde a una acción del usuario. Cada sentido tiene dos nombres
+   idénticos para que la animación vuelva a correr en pasadas consecutivas. */
+.flow-clip.turn-next-a {
+  animation: turn-next-a 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.flow-clip.turn-next-b {
+  animation: turn-next-b 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.flow-clip.turn-prev-a {
+  animation: turn-prev-a 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.flow-clip.turn-prev-b {
+  animation: turn-prev-b 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes turn-next-a {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+@keyframes turn-next-b {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+@keyframes turn-prev-a {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+@keyframes turn-prev-b {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .finder-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- ajustes y tema ---------------------------------------------------- */
+
+/* El acento sale del color del cuaderno (hooks.ts → applyPrefs): también lo usan los
+   controles nativos y la selección de texto. */
+:root {
+  accent-color: var(--accent);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+/* Pestañas de Ajustes: la fila se desplaza si no entra y se desvanece en el borde con más pestañas. */
+@property --fade-l {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --fade-r {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+.tab-strip {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tab-strip[data-fade-start] {
+  --fade-l: 28px;
+}
+
+.tab-strip[data-fade-end] {
+  --fade-r: 28px;
+}
+
+.tab-strip .tab-list {
+  display: flex;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent);
+  transition:
+    --fade-l 0.2s ease,
+    --fade-r 0.2s ease;
+}
+
+.tab-strip .tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-scroll {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface, #2c2c2e);
+  color: var(--label, #fff);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  opacity: 0.9;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.tab-scroll:hover {
+  opacity: 1;
+  background: var(--fill-strong, #3a3a3c);
+}
+
+.tab-scroll.prev {
+  left: 2px;
+}
+
+.tab-scroll.next {
+  right: 2px;
+}
+
+/* el aro de foco, adentro: la fila recorta lo que se sale de ella */
+.tab-list button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Cuando hay lugar, las secciones de Ajustes van en una lista vertical a la izquierda y se ven todas de una vez. */
+@media (min-width: 560px) {
+  .tab-scroll {
+    display: none;
+  }
+
+  .settings-window {
+    padding-top: 0;
+  }
+
+  .settings-layout {
+    display: grid;
+    grid-template-columns: 148px minmax(0, 1fr);
+    border-top: 0.5px solid var(--hairline);
+  }
+
+  .settings-window .settings-layout {
+    border-top: 0;
+  }
+
+  .settings-tabs {
+    display: block;
+    padding: 14px 10px 18px 12px;
+    overflow-y: auto;
+    border-right: 0.5px solid var(--hairline);
+    border-bottom: 0;
+  }
+
+  .settings-tabs .tab-strip,
+  .settings-tabs .tab-list {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .settings-tabs .tab-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    padding: 0;
+    overflow: visible;
+    border-radius: 0;
+    background: none;
+  }
+
+  .settings-tabs .tab-list button {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    text-align: left;
+  }
+
+  .settings-tabs .tab-list button:hover:not([aria-selected='true']) {
+    background: var(--fill);
+  }
+
+  .settings-tabs .tab-list button[aria-selected='true'] {
+    background: var(--fill-strong);
+    box-shadow: none;
+    font-weight: 600;
+  }
+}
+
+/* Selector de color de una categoría: el círculo del color actual y una flecha, que se lee como botón. */
+.color-well {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  height: 26px;
+  padding: 0 7px 0 5px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--fill);
+  color: var(--label-2);
+  transition: background 0.15s ease;
+}
+
+.color-well:hover,
+.color-well[aria-expanded='true'] {
+  background: var(--fill-strong);
+  color: var(--label);
+}
+
+.color-well-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.3);
+  transition: background 0.15s ease;
+}
+
+.color-panel.left {
+  right: auto;
+  left: 0;
+}
+
+/* si abajo no hay lugar, el panel se abre hacia arriba */
+.color-panel.above {
+  top: auto;
+  bottom: calc(100% + 8px);
+  animation-name: pop-up;
+}
+
+.color-panel.above.leaving {
+  animation: pop-out-up 0.11s ease-in forwards;
+}
+
+.color-suggested .swatch-button[aria-checked='true'] {
+  box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 3px var(--accent);
+}
+
+@keyframes pop-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes pop-out-up {
+  to {
+    opacity: 0;
+    transform: translateY(3px) scale(0.985);
+  }
+}
+
+/* Dato que se lee (una versión, una cuenta de consultas): más firme que el contador gris. */
+.row-value {
+  color: var(--label-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* La tapa de fábrica sigue al tema, así que su muestra también (en oscuro se perdería contra la fila). */
+.swatch-button.factory {
+  background: #2b2c31;
+}
+
+:root[data-theme='dark'] .swatch-button.factory {
+  background: #0d0d0f;
+}
+
+/* Texto corrido dentro de un grupo de Ajustes. */
+.settings-note {
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--label-2);
+  font-size: 12px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.settings-note + .row,
+.row + .settings-note,
+.settings-note + .license {
+  border-top: 0.5px solid var(--hairline);
+}
+
+/* Licencia: el texto completo, plegado. */
+.license {
+  interpolate-size: allow-keywords;
+}
+
+.license::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 0.25s ease,
+    content-visibility 0.25s allow-discrete;
+}
+
+.license[open]::details-content {
+  block-size: auto;
+}
+
+.license summary {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  padding: 11px 14px;
+  color: var(--accent);
+  list-style: none;
+}
+
+.license summary::-webkit-details-marker {
+  display: none;
+}
+
+.license summary::before {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: '';
+  transform: rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+
+.license[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.license-text {
+  max-height: 220px;
+  margin: 0;
+  padding: 12px 14px 14px;
+  overflow-y: auto;
+  border-top: 0.5px solid var(--hairline);
+  color: var(--label-2);
+  font: 11.5px/1.5 var(--mono);
+  white-space: pre-wrap;
+  user-select: text;
+  cursor: text;
+}
+
+.license[open] .license-text {
+  animation: fade 0.25s ease;
+}
+
+/* ---- interacción del cuaderno ---- */
+
+/* Los controles del encabezado de la hoja quedan por encima de las franjas de pasar
+   página: si llegan hasta un borde, el clic sigue siendo de ellos. */
+.page-head .chip,
+.page-head .menu {
+  position: relative;
+  z-index: 3;
+}
+
+/* Botones de los carteles de arriba: ícono y texto en una línea, y la tecla del atajo
+   escrita al lado, más tenue. */
+.page-mode button {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  transition: background-color 0.15s ease;
+}
+
+.page-mode kbd {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.62;
+}
+
+/* Papelera o secret-book sin hojas: la salida al cuaderno de siempre queda a la vista. */
+.page-empty .button {
+  margin-top: 12px;
+  pointer-events: auto;
+}
+
+/* Deslizar para pasar página: el contenido de las hojas acompaña a la mano unos píxeles
+   (Notebook.tsx pone --swipe mientras dura). Si no se llega a pasar, vuelve suave. */
+.leaves[data-swipe] .flow-clip,
+.leaves[data-swipe] .page-head {
+  translate: var(--swipe, 0px) 0;
+}
+
+.leaves[data-swipe='back'] .flow-clip,
+.leaves[data-swipe='back'] .page-head {
+  transition:
+    translate 0.22s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 0.09s ease;
+}
+
+/* Pregunta antes de algo que conviene no hacer por accidente (ui.tsx → Confirm). */
+.modal.confirm {
+  gap: 6px;
+  width: min(340px, calc(100vw - 48px));
+  padding: 20px 20px 16px;
+}
+
+.confirm h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.confirm p {
+  margin: 0;
+  color: var(--label-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* Hoja suelta: el atajo para guardar va escrito en el pie, y «Descartar» con texto
+   escrito pide un segundo clic (el botón queda en rojo mientras espera). */
+.loose-hint {
+  animation: fade 0.2s ease;
+}
+
+.loose-hint.warn {
+  color: var(--danger);
+}
+
+.loose-foot kbd {
+  color: var(--label-2);
+  font: inherit;
+  font-weight: 600;
+}
+
+.loose .icon-button {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.loose .icon-button.armed,
+.loose .icon-button.armed:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Ajustes → Integraciones: el estado de cada asistente y el archivo donde van sus instrucciones. */
+.integration-status,
+.integration-path,
+.integration-note {
+  display: block;
+}
+
+.integration-status.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.row-text .integration-path {
+  margin-top: 1px;
+  color: var(--label-3);
+  font-size: 11px;
+}
+
+.row-text .integration-note {
+  margin-top: 3px;
+  color: var(--warn);
+  white-space: normal;
+}
+
+/* ---- Mapa de hojas (SheetMapModal) ---- */
+.counter-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  margin: -2px 0;
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.counter-btn:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.sheet-map-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  animation: fade 0.15s ease-out;
+}
+
+.sheet-map-modal {
+  width: 90%;
+  max-width: 840px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+  animation: pop 0.18s ease-out;
+}
+
+.sheet-map-head {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: color-mix(in srgb, var(--surface) 95%, var(--fill));
+}
+
+.sheet-map-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet-map-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sheet-map-title-group h2 {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--label);
+  margin: 0;
+}
+
+.sheet-map-icon {
+  color: var(--accent);
+}
+
+.sheet-map-total-pill {
+  background: var(--fill);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--label-2);
+}
+
+.sheet-map-search-row {
+  display: flex;
+  align-items: center;
+  position: relative;
+  background: var(--fill);
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  padding: 0 10px;
+  height: 34px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sheet-map-search-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.sheet-map-search-icon {
+  color: var(--label-3);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.sheet-map-search-input,
+.sheet-map-search-input:focus,
+.sheet-map-search-input:focus-visible {
+  flex: 1;
+  border: none !important;
+  background: transparent !important;
+  font: inherit;
+  font-size: 13px;
+  color: var(--label);
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 0;
+}
+
+.sheet-map-search-input::placeholder {
+  color: var(--label-3);
+}
+
+.sheet-map-clear-btn {
+  color: var(--label-3);
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.sheet-map-clear-btn:hover {
+  color: var(--label);
+}
+
+.sheet-map-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.sheet-map-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  border-radius: 12px;
+  border: 1px solid var(--hairline);
+  background: var(--fill);
+  color: var(--label-2);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.sheet-map-filter-pill:hover {
+  background: var(--fill-strong);
+  color: var(--label);
+}
+
+.sheet-map-filter-pill.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.sheet-map-cat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sheet-map-cat-dot.unset {
+  background: #a0a5ad;
+}
+
+.sheet-map-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+}
+
+.sheet-map-empty {
+  text-align: center;
+  color: var(--label-3);
+  padding: 40px 20px;
+  font-size: 13px;
+}
+
+.sheet-map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.sheet-map-card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  position: relative;
+}
+
+.sheet-map-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-soft);
+  border-color: var(--accent);
+}
+
+.sheet-map-card.current {
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+}
+
+.sheet-map-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.sheet-map-card-num {
+  font-weight: 750;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.sheet-map-card-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-map-card-cat.muted {
+  color: var(--label-3);
+}
+
+.sheet-map-active-badge {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.sheet-map-card-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.sheet-map-card-date {
+  font-size: 10.5px;
+  color: var(--label-3);
+  margin-bottom: 6px;
+}
+
+.sheet-map-card-preview {
+  font-size: 11.5px;
+  color: var(--label-2);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

@@ -1,0 +1,326 @@
+/* Hojas .md con formato (components/Markdown.tsx). Todo va sobre el rayado: cada bloque
+   ocupa renglones enteros de --line y no hay márgenes entre bloques; los renglones en
+   blanco del original son renglones en blanco de la hoja. Lo que cambia de tamaño (los
+   títulos, el código) cambia la letra, nunca el alto del renglón. */
+
+.page-text.md {
+  /* Los espacios del original se respetan, como en el texto plano. */
+  white-space: pre-wrap;
+}
+
+.md p,
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre {
+  margin: 0;
+}
+
+.md-blank {
+  height: var(--line);
+}
+
+/* ---- títulos ---- */
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-weight: 700;
+  line-height: var(--line);
+  letter-spacing: -0.012em;
+  /* Un título no queda solo al pie de una página: pasa con lo que sigue. */
+  break-after: avoid;
+}
+
+/* El grande ocupa dos renglones y se asienta sobre el de abajo, con la línea de base a la
+   misma altura que la del texto común en ese renglón, como un título escrito a mano en
+   un cuaderno. Con esta letra, la raya de arriba le pasa justo por encima de las
+   mayúsculas. El corrimiento es la mitad de un renglón menos la diferencia de las dos
+   letras (0,365 es la altura de la línea de base de Inter, en eme, por encima del centro). */
+.md h1 {
+  font-size: calc(var(--text) * 1.6);
+  line-height: calc(var(--line) * 2);
+  letter-spacing: -0.022em;
+}
+
+.md-lift {
+  position: relative;
+  top: calc(var(--line) * 0.5 - var(--text) * 0.219);
+}
+
+.md h2 {
+  font-size: calc(var(--text) * 1.3);
+  letter-spacing: -0.018em;
+}
+
+.md h3 {
+  font-size: calc(var(--text) * 1.12);
+}
+
+.md h4 {
+  font-size: var(--text);
+}
+
+.md h5,
+.md h6 {
+  color: var(--label-2);
+  font-size: calc(var(--text) * 0.86);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---- dentro del renglón ---- */
+
+.md strong {
+  font-weight: 700;
+}
+
+.md del {
+  color: var(--label-2);
+  text-decoration-thickness: 1.5px;
+}
+
+/* Código dentro del texto: con alto de renglón 1, para no estirar el renglón que lo lleva. */
+.md code {
+  padding: 0.14em 0.34em;
+  border-radius: 4px;
+  background: var(--fill);
+  font: calc(var(--text) * 0.88) / 1 var(--mono);
+}
+
+.md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+  transition: text-decoration-color 0.15s ease;
+}
+
+.md-link:hover,
+.md-link:focus-visible {
+  text-decoration-color: currentColor;
+}
+
+.md-link:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Un enlace que no es web ni correo (un archivo, una ruta relativa) no se abre. */
+.md-link.off {
+  color: inherit;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--label-3);
+  cursor: text;
+}
+
+.md-image {
+  color: var(--label-2);
+  font-style: italic;
+}
+
+.md-image svg {
+  width: 0.95em;
+  height: 0.95em;
+  margin-right: 0.3em;
+  vertical-align: -0.14em;
+  stroke-width: 1.75;
+}
+
+/* ---- listas ---- */
+
+.md ul,
+.md ol {
+  padding: 0;
+  list-style: none;
+}
+
+.md li {
+  position: relative;
+  min-height: var(--line);
+  padding-left: 1.45em;
+}
+
+.md ul > li::before {
+  position: absolute;
+  left: 0.42em;
+  color: var(--label-2);
+  content: '•';
+}
+
+.md ul ul > li::before {
+  content: '◦';
+}
+
+.md ul ul ul > li::before {
+  content: '▪';
+  font-size: 0.78em;
+}
+
+.md ol > li {
+  padding-left: calc(var(--digits, 1) * 0.62em + 1.05em);
+}
+
+.md-num {
+  position: absolute;
+  left: 0;
+  width: calc(var(--digits, 1) * 0.62em + 0.5em);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Tareas: la casilla va donde iría la viñeta. Tocarla la marca en el archivo. */
+.md li.md-task {
+  padding-left: 1.6em;
+}
+
+.md li.md-task::before {
+  content: none;
+}
+
+.md-check {
+  position: absolute;
+  top: calc((var(--line) - 1.04em) / 2 + 0.04em);
+  left: 0.1em;
+  display: grid;
+  place-items: center;
+  width: 1.04em;
+  height: 1.04em;
+  padding: 0;
+  border: 1.5px solid color-mix(in srgb, var(--label) 34%, transparent);
+  border-radius: 0.28em;
+  background: var(--paper);
+  color: var(--on-accent, #fff);
+  font: inherit;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.md-check:hover:not([aria-disabled='true']) {
+  border-color: var(--accent);
+}
+
+.md-check[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.md-check[aria-disabled='true'] {
+  cursor: text;
+}
+
+.md-check svg {
+  width: 0.78em;
+  height: 0.78em;
+  stroke-width: 3.2;
+  animation: fade 0.15s ease;
+}
+
+.md li.done > p {
+  color: var(--label-2);
+  text-decoration: line-through;
+  text-decoration-color: var(--label-3);
+}
+
+/* ---- citas, código, tablas y separadores ---- */
+
+.md blockquote {
+  padding-left: 0.9em;
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--label) 16%, transparent);
+  color: var(--label-2);
+}
+
+/* Bloque de código: un recuadro apenas tintado, que deja ver el rayado. */
+.md-code {
+  min-height: var(--line);
+  padding: 0 0.8em;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--label) 5%, transparent);
+  font: calc(var(--text) * 0.86) / var(--line) var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+  /* Un bloque corto no se parte entre dos páginas; uno más largo que la página, sí. */
+  break-inside: avoid;
+}
+
+/* Tabla dibujada sobre el rayado: los renglones ya separan las filas; las columnas llevan
+   una raya fina y los títulos, una más marcada sobre el renglón. */
+.md table {
+  max-width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.md th,
+.md td {
+  padding: 0 0.8em;
+  line-height: var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th:first-child,
+.md td:first-child {
+  padding-left: 0.1em;
+}
+
+.md th + th,
+.md td + td {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--label) 16%, transparent);
+}
+
+.md th {
+  background: linear-gradient(to top, color-mix(in srgb, var(--label) 34%, transparent) 1.5px, transparent 1.5px);
+  font-weight: 650;
+}
+
+.md th + th {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--label) 16%, transparent);
+}
+
+.md tr {
+  break-inside: avoid;
+}
+
+/* Separador: una raya trazada sobre la del renglón. */
+.md-rule {
+  height: var(--line);
+  background: linear-gradient(to top, color-mix(in srgb, var(--label) 30%, transparent) 1.5px, transparent 1.5px) center / 100% 100%
+    no-repeat;
+}
+
+/* ---- encabezado de la hoja: etiquetas y de dónde viene la nota ---- */
+
+.page-tag {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.page-tag.tag::before {
+  color: var(--label-3);
+  content: '#';
+}
