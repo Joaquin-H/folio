@@ -638,6 +638,7 @@ pub fn run() {
             commands::import_secret_key,
             commands::start_dictation,
             commands::set_locale,
+            commands::check_update,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar Folio")

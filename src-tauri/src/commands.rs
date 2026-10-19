@@ -1304,3 +1304,36 @@ pub fn set_locale(app: AppHandle, shared: State<'_, Arc<Shared>>, locale: String
     Ok(())
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct RemoteRelease {
+    pub tag_name: String,
+    pub html_url: String,
+    pub name: Option<String>,
+}
+
+#[tauri::command]
+pub fn check_update(repo: Option<String>) -> Result<Option<RemoteRelease>, String> {
+    let repo = repo.unwrap_or_else(|| "Joaquin-H/folio".to_string());
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    let resp = ureq::get(&url)
+        .set("User-Agent", "Folio-App")
+        .set("Accept", "application/vnd.github.v3+json")
+        .timeout(std::time::Duration::from_secs(7))
+        .call();
+
+    match resp {
+        Ok(response) => {
+            let data: serde_json::Value = response.into_json().map_err(|err| err.to_string())?;
+            let tag_name = data.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let html_url = data.get("html_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = data.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            Ok(Some(RemoteRelease { tag_name, html_url, name }))
+        }
+        Err(ureq::Error::Status(404, _)) => Ok(None),
+        Err(ureq::Error::Status(403, _)) => Err("rate_limited".to_string()),
+        Err(ureq::Error::Status(code, _)) => Err(format!("status_{code}")),
+        Err(ureq::Error::Transport(_)) => Err("offline".to_string()),
+    }
+}
+
+

@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+
 /**
  * Verificador de actualizaciones de Folio a través de GitHub Releases.
  *
@@ -50,6 +52,37 @@ export async function checkUpdate(
   currentVersion: string,
   repo = GITHUB_REPO,
 ): Promise<UpdateInfo> {
+  // En la aplicación instalada usamos el comando nativo de Rust para evitar bloqueos de CSP
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    try {
+      const data = await invoke<{
+        tag_name: string;
+        html_url: string;
+        name?: string;
+      } | null>('check_update', { repo });
+
+      if (!data) {
+        return { available: false, error: 'not_found' };
+      }
+
+      const tagName = data.tag_name ?? '';
+      const cleanVersion = tagName.replace(/^[vV]/, '').trim();
+      const newer = Boolean(cleanVersion && isNewerVersion(cleanVersion, currentVersion));
+
+      return {
+        available: newer,
+        latestVersion: cleanVersion || undefined,
+        url: data.html_url || `https://github.com/${repo}/releases`,
+        name: data.name,
+      };
+    } catch (err) {
+      const msg = String(err);
+      if (msg === 'rate_limited') return { available: false, error: 'rate_limited' };
+      if (msg.startsWith('status_404')) return { available: false, error: 'not_found' };
+      return { available: false, error: 'offline' };
+    }
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
 
