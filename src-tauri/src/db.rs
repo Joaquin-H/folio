@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS jev_cache (
   PRIMARY KEY (content_hash, categories)
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS sheets_fts USING fts5(
-  title, content, tokenize = 'unicode61 remove_diacritics 2'
+  title, content, content='', contentless_delete=1, tokenize = 'unicode61 remove_diacritics 2'
 );
 "#;
 
@@ -242,6 +242,38 @@ pub fn hash(text: &str) -> String {
     format!("{:x}", Sha256::digest(text.as_bytes()))
 }
 
+pub(crate) const COMPRESSED_PREFIX: &str = "z1:";
+
+/// Comprime texto con DEFLATE si el resultado en base64 es menor que el texto original.
+pub fn compress_if_smaller(text: &str) -> String {
+    if text.len() <= 48 {
+        return text.to_string();
+    }
+    let deflated = miniz_oxide::deflate::compress_to_vec(text.as_bytes(), 6);
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&deflated);
+    if b64.len() + COMPRESSED_PREFIX.len() < text.len() {
+        format!("{COMPRESSED_PREFIX}{b64}")
+    } else {
+        text.to_string()
+    }
+}
+
+/// Descomprime texto si comienza con el prefijo `z1:`. Si no, lo devuelve como está.
+pub fn decompress_if_compressed(text: &str) -> String {
+    let Some(encoded) = text.strip_prefix(COMPRESSED_PREFIX) else {
+        return text.to_string();
+    };
+    use base64::Engine;
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
+        return text.to_string();
+    };
+    let Ok(decompressed) = miniz_oxide::inflate::decompress_to_vec(&bytes) else {
+        return text.to_string();
+    };
+    String::from_utf8(decompressed).unwrap_or_else(|_| text.to_string())
+}
+
 fn map_summary(r: &Row) -> rusqlite::Result<SheetSummary> {
     Ok(SheetSummary {
         id: r.get(0)?,
@@ -374,6 +406,8 @@ impl Db {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
+        conn.pragma_update(None, "wal_autocheckpoint", 250)?;
         conn.execute_batch(SCHEMA)?;
         Self::migrate(&mut conn)?;
         let db = Self {
@@ -385,36 +419,115 @@ impl Db {
         Ok(db)
     }
 
-    /// Agrega las columnas que las bases creadas por una versión anterior no tienen.
+    /// Agrega las columnas que las bases creadas por una versión anterior no tienen,
+    /// migra FTS5 a formato contentless para ahorrar espacio masivo y compacta la base.
     fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
-        let tx = conn.transaction()?;
-        let has = |column: &str| {
-            tx.prepare("SELECT 1 FROM pragma_table_info('sheets') WHERE name = ?1")?.exists([column])
-        };
-        if !has("missing_at")? {
-            tx.execute("ALTER TABLE sheets ADD COLUMN missing_at INTEGER", [])?;
-        }
-        // Antes solo se guardaba la categoría ya filtrada por la confianza mínima. Lo que
-        // el clasificador eligió en su momento pasa a ser la elección cruda, y lo ya evaluado cuenta
-        // como evaluado ahora: no se vuelve a consultar por actualizar Book.
-        if !has("jev_choice")? {
-            tx.execute_batch(
-                "ALTER TABLE sheets ADD COLUMN classified_at INTEGER; \
-                 ALTER TABLE sheets ADD COLUMN jev_choice INTEGER; \
-                 ALTER TABLE sheets ADD COLUMN jev_confidence REAL;",
-            )?;
-            tx.execute(
-                "UPDATE sheets SET classified_at = ?1 WHERE classified_hash IS NOT NULL",
-                [now_ms()],
-            )?;
-            tx.execute(
-                "UPDATE sheets SET jev_confidence = category_confidence, \
-                 jev_choice = CASE WHEN category_source = 'jev' THEN category_id END \
-                 WHERE category_source IS NULL OR category_source = 'jev'",
+        let mut vacuum_needed = false;
+        {
+            let tx = conn.transaction()?;
+            let has = |column: &str| {
+                tx.prepare("SELECT 1 FROM pragma_table_info('sheets') WHERE name = ?1")?.exists([column])
+            };
+            if !has("missing_at")? {
+                tx.execute("ALTER TABLE sheets ADD COLUMN missing_at INTEGER", [])?;
+            }
+            if !has("jev_choice")? {
+                tx.execute_batch(
+                    "ALTER TABLE sheets ADD COLUMN classified_at INTEGER; \
+                     ALTER TABLE sheets ADD COLUMN jev_choice INTEGER; \
+                     ALTER TABLE sheets ADD COLUMN jev_confidence REAL;",
+                )?;
+                tx.execute(
+                    "UPDATE sheets SET classified_at = ?1 WHERE classified_hash IS NOT NULL",
+                    [now_ms()],
+                )?;
+                tx.execute(
+                    "UPDATE sheets SET jev_confidence = category_confidence, \
+                     jev_choice = CASE WHEN category_source = 'jev' THEN category_id END \
+                     WHERE category_source IS NULL OR category_source = 'jev'",
+                    [],
+                )?;
+            }
+
+            // Migrar FTS5 a tabla contentless si fue creada con almacenamiento de contenido completo
+            let fts_sql: Option<String> = tx
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sheets_fts'",
+                    [],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(sql) = fts_sql {
+                if !sql.contains("contentless_delete") {
+                    tx.execute("DROP TABLE IF EXISTS sheets_fts", [])?;
+                    tx.execute(
+                        "CREATE VIRTUAL TABLE sheets_fts USING fts5(
+                          title, content, content='', contentless_delete=1, tokenize = 'unicode61 remove_diacritics 2'
+                        )",
+                        [],
+                    )?;
+                    tx.execute(
+                        "INSERT INTO sheets_fts (rowid, title, content) \
+                         SELECT id, title, content FROM sheets WHERE secret = 0 AND hidden = 0",
+                        [],
+                    )?;
+                    vacuum_needed = true;
+                }
+            }
+
+            // Comprimir versiones existentes que no estén comprimidas ni cifradas
+            {
+                let mut stmt = tx.prepare(
+                    "SELECT id, content FROM versions WHERE content NOT LIKE 'z1:%' AND content NOT LIKE 'enc1:%'",
+                )?;
+                let rows: Vec<(i64, String)> = stmt
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                let mut upd = tx.prepare("UPDATE versions SET content = ?1 WHERE id = ?2")?;
+                let mut any_compressed = false;
+                for (vid, vcontent) in rows {
+                    let comp = compress_if_smaller(&vcontent);
+                    if comp != vcontent {
+                        upd.execute(params![comp, vid])?;
+                        any_compressed = true;
+                    }
+                }
+                if any_compressed {
+                    vacuum_needed = true;
+                }
+            }
+
+            // Deduplicar versiones consecutivas idénticas
+            let deleted = tx.execute(
+                "DELETE FROM versions WHERE id IN (
+                   SELECT v2.id FROM versions v1
+                   JOIN versions v2 ON v1.sheet_id = v2.sheet_id
+                     AND v1.content_hash = v2.content_hash
+                     AND v1.id < v2.id
+                     AND NOT EXISTS (
+                       SELECT 1 FROM versions v_mid
+                       WHERE v_mid.sheet_id = v1.sheet_id
+                         AND v_mid.id > v1.id AND v_mid.id < v2.id
+                     )
+                 )",
                 [],
             )?;
+            if deleted > 0 {
+                vacuum_needed = true;
+            }
+
+            tx.commit()?;
         }
-        tx.commit()
+
+        // Si auto_vacuum estaba en 0 (base preexistente) o se liberó espacio masivo, compactar con VACUUM
+        let auto_vac: i64 = conn.pragma_query_value(None, "auto_vacuum", |r| r.get(0)).unwrap_or(0);
+        if auto_vac == 0 || vacuum_needed {
+            let _ = conn.execute_batch("PRAGMA auto_vacuum = INCREMENTAL; VACUUM;");
+        } else {
+            let _ = conn.execute("PRAGMA incremental_vacuum(500)", []);
+        }
+        let _ = conn.execute("PRAGMA wal_checkpoint(PASSIVE)", []);
+        Ok(())
     }
 
     pub fn encrypt_plaintext_secrets(&self) -> rusqlite::Result<()> {
@@ -832,17 +945,27 @@ impl Db {
             }
             Some(old) => {
                 if now - old.last_change_at > cfg.session_gap_ms {
-                    tx.execute(
-                        "INSERT INTO versions (sheet_id, content, content_hash, saved_at) \
-                         VALUES (?1, ?2, ?3, ?4)",
-                        params![old.id, old.content, old.hash, old.modified_at],
-                    )?;
-                    tx.execute(
-                        "DELETE FROM versions WHERE sheet_id = ?1 AND id NOT IN (\
-                         SELECT id FROM versions WHERE sheet_id = ?1 \
-                         ORDER BY saved_at DESC, id DESC LIMIT ?2)",
-                        params![old.id, cfg.keep],
-                    )?;
+                    let last_hash: Option<String> = tx
+                        .query_row(
+                            "SELECT content_hash FROM versions WHERE sheet_id = ?1 ORDER BY saved_at DESC, id DESC LIMIT 1",
+                            [old.id],
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    if last_hash.as_deref() != Some(&old.hash) {
+                        let v_stored = compress_if_smaller(&old.content);
+                        tx.execute(
+                            "INSERT INTO versions (sheet_id, content, content_hash, saved_at) \
+                             VALUES (?1, ?2, ?3, ?4)",
+                            params![old.id, v_stored, old.hash, old.modified_at],
+                        )?;
+                        tx.execute(
+                            "DELETE FROM versions WHERE sheet_id = ?1 AND id NOT IN (\
+                             SELECT id FROM versions WHERE sheet_id = ?1 \
+                             ORDER BY saved_at DESC, id DESC LIMIT ?2)",
+                            params![old.id, cfg.keep],
+                        )?;
+                    }
                 }
                 let mut secret = old.secret;
                 let mut secret_source = old.secret_source;
@@ -1030,7 +1153,11 @@ impl Db {
         )?;
         let mut versions = stmt
             .query_map([id], |r| {
-                Ok(Version { id: r.get(0)?, saved_at: r.get(1)?, content: r.get(2)? })
+                Ok(Version {
+                    id: r.get(0)?,
+                    saved_at: r.get(1)?,
+                    content: decompress_if_compressed(&r.get::<_, String>(2)?),
+                })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -1059,6 +1186,7 @@ impl Db {
                     v.content = crate::crypto::decrypt(&key, &v.content).map_err(|e| {
                         rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)))
                     })?;
+                    v.content = decompress_if_compressed(&v.content);
                 }
             }
         }
@@ -1094,22 +1222,53 @@ impl Db {
         Self::reindex(&conn, id)
     }
 
+    /// Traspasa los cambios del WAL al archivo principal para mantenerlo liviano.
+    pub fn checkpoint(&self) {
+        let conn = self.lock();
+        let _ = conn.execute("PRAGMA wal_checkpoint(PASSIVE)", []);
+    }
+
+    /// Reclama páginas libres dejadas por versiones podadas u hojas borradas.
+    pub fn compact(&self) {
+        let conn = self.lock();
+        let _ = conn.execute("PRAGMA incremental_vacuum(500)", []);
+    }
+
     /// Guarda el contenido actual de una hoja como versión anterior, sin esperar al
     /// cambio de sesión. Se usa antes de pisar algo que no se quiere perder.
     pub fn snapshot(&self, id: i64, keep: i64) -> rusqlite::Result<()> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
-        tx.execute(
-            "INSERT INTO versions (sheet_id, content, content_hash, saved_at) \
-             SELECT id, content, content_hash, modified_at FROM sheets WHERE id = ?1",
-            [id],
-        )?;
-        tx.execute(
-            "DELETE FROM versions WHERE sheet_id = ?1 AND id NOT IN (\
-             SELECT id FROM versions WHERE sheet_id = ?1 \
-             ORDER BY saved_at DESC, id DESC LIMIT ?2)",
-            params![id, keep.max(1)],
-        )?;
+        let found: Option<(String, String, i64)> = tx
+            .query_row(
+                "SELECT content, content_hash, modified_at FROM sheets WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        if let Some((content, content_hash, modified_at)) = found {
+            let last_hash: Option<String> = tx
+                .query_row(
+                    "SELECT content_hash FROM versions WHERE sheet_id = ?1 ORDER BY saved_at DESC, id DESC LIMIT 1",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if last_hash.as_deref() != Some(&content_hash) {
+                let v_stored = compress_if_smaller(&content);
+                tx.execute(
+                    "INSERT INTO versions (sheet_id, content, content_hash, saved_at) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![id, v_stored, content_hash, modified_at],
+                )?;
+                tx.execute(
+                    "DELETE FROM versions WHERE sheet_id = ?1 AND id NOT IN (\
+                     SELECT id FROM versions WHERE sheet_id = ?1 \
+                     ORDER BY saved_at DESC, id DESC LIMIT ?2)",
+                    params![id, keep.max(1)],
+                )?;
+            }
+        }
         tx.commit()
     }
 
@@ -2376,5 +2535,168 @@ mod tests {
         let detail = db.get_sheet(id).unwrap().unwrap();
         assert_eq!(detail.summary.category_id, Some(ideas));
         assert_eq!(detail.summary.category_source, Some("jev".into()));
+    }
+
+    #[test]
+    fn versiones_se_guardan_comprimidas_y_se_leen_descomprimidas() {
+        let db = db();
+        let session = VersionCfg { keep: 2, session_gap_ms: 0 };
+        let long_note = "Párrafo de nota de reunión técnica con múltiples detalles y texto que se repite. ".repeat(10);
+        let inc1 = incoming("file", "/notas/comp.txt", &long_note);
+        db.upsert_sheet(&inc1, &session).unwrap();
+
+        let inc2 = incoming("file", "/notas/comp.txt", "texto editado");
+        db.upsert_sheet(&inc2, &session).unwrap();
+
+        let id = db.sheet_id("file", "/notas/comp.txt").unwrap();
+        // Verificar que en la tabla SQLite esté guardado con z1:
+        let raw_v: String = db.lock().query_row("SELECT content FROM versions WHERE sheet_id = ?1", [id], |r| r.get(0)).unwrap();
+        assert!(raw_v.starts_with(COMPRESSED_PREFIX), "La versión debe guardarse comprimida con z1:");
+        assert!(raw_v.len() < long_note.len(), "La versión comprimida debe ser más corta que el original");
+
+        // Al pedir get_sheet, se lee descomprimida
+        let detail = db.get_sheet(id).unwrap().unwrap();
+        assert_eq!(detail.versions.len(), 1);
+        assert_eq!(detail.versions[0].content, long_note);
+    }
+
+    #[test]
+    fn versiones_consecutivas_identicas_se_deduplican() {
+        let db = db();
+        let session = VersionCfg { keep: 5, session_gap_ms: 0 };
+        let inc1 = incoming("file", "/notas/dedup.txt", "versión 1");
+        db.upsert_sheet(&inc1, &session).unwrap();
+        let id = db.sheet_id("file", "/notas/dedup.txt").unwrap();
+
+        // Snapshot de la versión 1
+        db.snapshot(id, 5).unwrap();
+        assert_eq!(db.get_sheet(id).unwrap().unwrap().versions.len(), 1);
+
+        // Snapshot repetido sin cambios: no debe duplicar
+        db.snapshot(id, 5).unwrap();
+        assert_eq!(db.get_sheet(id).unwrap().unwrap().versions.len(), 1);
+
+        // Editar nota
+        let inc2 = incoming("file", "/notas/dedup.txt", "versión 2");
+        db.upsert_sheet(&inc2, &session).unwrap();
+        assert_eq!(db.get_sheet(id).unwrap().unwrap().versions.len(), 1);
+
+        // Snapshot de la versión 2
+        db.snapshot(id, 5).unwrap();
+        assert_eq!(db.get_sheet(id).unwrap().unwrap().versions.len(), 2);
+
+        // Snapshot repetido: no duplica
+        db.snapshot(id, 5).unwrap();
+        assert_eq!(db.get_sheet(id).unwrap().unwrap().versions.len(), 2);
+    }
+
+    #[test]
+    fn migracion_convierte_fts5_y_comprime_versiones_existentes() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Crear esquema viejo con FTS5 tradicional y versiones sin comprimir
+        conn.execute_batch(
+            "CREATE TABLE sheets (id INTEGER PRIMARY KEY, source TEXT, source_key TEXT, title TEXT, path TEXT, content TEXT, content_hash TEXT, size INTEGER, source_mtime INTEGER, created_at INTEGER, modified_at INTEGER, last_change_at INTEGER, category_id INTEGER, category_source TEXT, category_confidence REAL, note_score REAL, classified_hash TEXT, classified_at INTEGER, jev_choice INTEGER, jev_confidence REAL, secret INTEGER DEFAULT 0, secret_source TEXT, hidden INTEGER DEFAULT 0, missing INTEGER DEFAULT 0, missing_at INTEGER);
+             CREATE VIRTUAL TABLE sheets_fts USING fts5(title, content, tokenize = 'unicode61 remove_diacritics 2');
+             CREATE TABLE versions (id INTEGER PRIMARY KEY, sheet_id INTEGER, content TEXT, content_hash TEXT, saved_at INTEGER);
+             CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT UNIQUE, description TEXT, color TEXT, position INTEGER);
+             CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+             CREATE TABLE roots (id INTEGER PRIMARY KEY, path TEXT UNIQUE);
+             CREATE TABLE bans (id INTEGER PRIMARY KEY, kind TEXT, pattern TEXT, enabled INTEGER, builtin INTEGER);
+             CREATE TABLE jev_cache (content_hash TEXT, categories TEXT, choice INTEGER, confidence REAL, note_score REAL, saved_at INTEGER, PRIMARY KEY (content_hash, categories));"
+        ).unwrap();
+
+        let long_note = "Texto largo para probar migración de versiones existentes no comprimidas. ".repeat(10);
+        conn.execute(
+            "INSERT INTO sheets (id, source, source_key, title, content, content_hash, size, source_mtime, created_at, modified_at, last_change_at, secret, hidden)
+             VALUES (1, 'file', '/notas/a.txt', 'a.txt', ?1, 'hash1', ?2, 1, 1, 1, 1, 0, 0)",
+            params![long_note, long_note.len()],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO sheets_fts (rowid, title, content) VALUES (1, 'a.txt', ?1)",
+            params![long_note],
+        ).unwrap();
+        // Versión no comprimida previa a la actualización
+        conn.execute(
+            "INSERT INTO versions (id, sheet_id, content, content_hash, saved_at) VALUES (1, 1, ?1, 'hash0', 0)",
+            params![long_note],
+        ).unwrap();
+
+        // Ejecutar setup / migrate
+        let db = Db::setup(conn, crate::crypto::Vault::in_memory_with_key([7u8; crate::crypto::KEY_LEN])).unwrap();
+
+        // 1. FTS5 ahora es contentless y sigue buscando
+        let fts_sql: String = db.lock().query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sheets_fts'", [], |r| r.get(0)).unwrap();
+        assert!(fts_sql.contains("contentless_delete=1"));
+        let search_count: i64 = db.lock().query_row("SELECT count(*) FROM sheets_fts WHERE sheets_fts MATCH 'migracion'", [], |r| r.get(0)).unwrap();
+        assert_eq!(search_count, 1);
+
+        // 2. La versión existente se comprimió en la base
+        let raw_v: String = db.lock().query_row("SELECT content FROM versions WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert!(raw_v.starts_with(COMPRESSED_PREFIX));
+
+        // 3. get_sheet la devuelve descomprimida sin pérdida de datos
+        let detail = db.get_sheet(1).unwrap().unwrap();
+        assert_eq!(detail.versions[0].content, long_note);
+    }
+
+    #[test]
+    fn test_medicion_1000_hojas_optimizadas() {
+        let dir = std::env::temp_dir().join(format!("folio_opt_{}", now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_file = dir.join("test.db");
+        {
+            let db = Db::open(&db_file).unwrap();
+            let session = VersionCfg { keep: 2, session_gap_ms: 0 };
+            let sample_note = "## Minuta de reunión\n\n- Tema 1: Arquitectura de la base de datos y optimización de almacenamiento.\n- Tema 2: Paginación y rendimiento en Tauri y React.\n- Pendientes: revisar índices y compresión de historial de versiones.\n\nCódigo de ejemplo:\n```rust\nfn optimize() -> Result<(), Error> {\n    println!(\"Optimizando almacenamiento\");\n    Ok(())\n}\n```\n\nNotas adicionales con texto repetido para simular una nota de trabajo de longitud típica de varios kilobytes con múltiples párrafos y listas de tareas pendientes para la semana.\n".repeat(20); // ~7 KB note
+
+            for i in 0..1000 {
+                let key = format!("/notas/nota_{i}.txt");
+                let inc = incoming("file", &key, &sample_note);
+                db.upsert_sheet(&inc, &session).unwrap();
+
+                // Simular edición 1
+                let edited = format!("{sample_note}\nEdición 1 con cambios adicionales en la nota.");
+                let inc_edit = Incoming {
+                    source: "file",
+                    source_key: key.clone(),
+                    title: format!("nota_{i}.txt"),
+                    path: Some(key.clone()),
+                    content: edited,
+                    size: sample_note.len() as i64 + 50,
+                    source_mtime: 2,
+                    created_at: 1,
+                    modified_at: 2,
+                };
+                db.upsert_sheet(&inc_edit, &session).unwrap();
+
+                // Simular edición 2
+                let edited2 = format!("{sample_note}\nEdición 2 con más cambios acumulados.");
+                let inc_edit2 = Incoming {
+                    source: "file",
+                    source_key: key.clone(),
+                    title: format!("nota_{i}.txt"),
+                    path: Some(key),
+                    content: edited2,
+                    size: sample_note.len() as i64 + 100,
+                    source_mtime: 3,
+                    created_at: 1,
+                    modified_at: 3,
+                };
+                db.upsert_sheet(&inc_edit2, &session).unwrap();
+            }
+            db.checkpoint();
+            db.compact();
+        }
+        let size_db = std::fs::metadata(&db_file).map(|m| m.len()).unwrap_or(0);
+        let wal_file = dir.join("test.db-wal");
+        let size_wal = std::fs::metadata(&wal_file).map(|m| m.len()).unwrap_or(0);
+        let total = size_db + size_wal;
+        eprintln!("\n=== MEDICION 1000 HOJAS OPTIMIZADAS ===");
+        eprintln!("DB: {} bytes ({:.2} MB)", size_db, size_db as f64 / 1_048_576.0);
+        eprintln!("WAL: {} bytes ({:.2} MB)", size_wal, size_wal as f64 / 1_048_576.0);
+        eprintln!("TOTAL: {} bytes ({:.2} MB)", total, total as f64 / 1_048_576.0);
+        let _ = std::fs::remove_dir_all(&dir);
+        // Antes ocupaba 51.25 MB, ahora debe ocupar mucho menos (< 20 MB)
+        assert!(total < 20 * 1_048_576, "El almacenamiento optimizado debe ser menor a 20 MB (fue {:.2} MB)", total as f64 / 1_048_576.0);
     }
 }

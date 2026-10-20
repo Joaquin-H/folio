@@ -1195,6 +1195,7 @@ dependencies = [
  "encoding_rs",
  "ignore",
  "keyring",
+ "miniz_oxide 0.8.9",
  "notify",
  "regex",
  "rusqlite",
