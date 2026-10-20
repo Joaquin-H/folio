@@ -726,6 +726,53 @@ textarea:focus-visible {
 
 /* Controles sobre el papel, en la franja de arriba: a la izquierda los del cuaderno
    (cerrarlo, cerrar la ventana), a la derecha los de las hojas (buscar, nueva hoja, menú). */
+.page-bar {
+  position: absolute;
+  top: 3px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.page-bar > * {
+  pointer-events: auto;
+}
+
+.page-bar .page-controls {
+  position: static;
+  flex: none;
+}
+
+.page-bar .page-actions {
+  position: static;
+  flex: none;
+}
+
+.page-bar .page-mode {
+  position: static;
+  top: auto;
+  left: auto;
+  transform: none;
+  margin: 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .page-controls,
 .page-actions {
   position: absolute;
