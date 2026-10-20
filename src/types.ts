@@ -297,6 +297,10 @@ export interface Prefs {
   textSize: TextSize;
   /** Las hojas `.md` se leen con formato (títulos, listas, tablas); escribiendo, siempre en texto plano. */
   markdown: boolean;
+  /** Ocultar el título de la hoja y los metadatos del encabezado. */
+  hideHeader: boolean;
+  /** Centrar el título de la hoja horizontalmente. */
+  centerTitle: boolean;
 }
 
 export interface FolderStat {

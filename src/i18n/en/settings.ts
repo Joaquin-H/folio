@@ -226,6 +226,12 @@ export const settings: Record<string, string> = {
   'Asoman arriba del cuaderno y filtran las hojas. Si las ocultás, se filtra desde Buscar y filtrar.':
     'They peek out above the notebook and filter pages. If hidden, filter using Search & filter.',
   'Ver los .md con formato': 'Render formatted .md',
+  'Ocultar encabezado': 'Hide header',
+  'Oculta el título, la fecha y los datos de la hoja para dejar más espacio al texto.':
+    'Hides the title, date, and sheet metadata to leave more room for text.',
+  'Centrar título de la hoja': 'Center sheet title',
+  'Ubica el título en el centro de la hoja en lugar de alinearlo a la izquierda.':
+    'Positions the title at the center of the sheet instead of left-aligned.',
   'Títulos, listas, tareas y tablas, sobre el rayado. Al escribir se ve el texto plano, que es lo que se guarda.':
     'Headings, lists, tasks, and tables rendered over the ruled lines. While typing, plain text is shown, which is what gets saved.',
   General: 'General',
@@ -239,6 +245,8 @@ export const settings: Record<string, string> = {
   // shortcuts.ts
   'Página siguiente': 'Next page',
   'Página anterior': 'Previous page',
+
+
   'Primera hoja': 'First page',
   'Última hoja': 'Last page',
   'Escribir en la hoja': 'Write on page',

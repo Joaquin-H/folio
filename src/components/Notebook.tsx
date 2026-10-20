@@ -21,6 +21,8 @@ import {
   ChevronLast,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Compass,
   Ellipsis,
   Eye,
@@ -305,7 +307,7 @@ const STATUS_TEXT = {
 /** Atajos que atiende el texto mientras se escribe en él. */
 const EDITOR_ACTIONS = ['finish', 'save', 'preview', 'write-next', 'write-prev', 'indent'] as const;
 /** Pasar de página y saltar a la primera o a la última, con el cuaderno cerrado o leyendo. */
-const TURN_ACTIONS = ['next', 'prev', 'first', 'last'] as const;
+const TURN_ACTIONS = ['next', 'prev', 'sheet-next', 'sheet-prev', 'first', 'last'] as const;
 /** Guardar con el teclado desde cualquier parte de la hoja que se escribe. */
 const SAVE_ACTIONS = ['finish', 'save'] as const;
 
@@ -341,6 +343,14 @@ function OpenSheet(props: {
   notesDir: string;
   /** Las hojas `.md` se leen con formato. */
   markdown: boolean;
+  hideHeader?: boolean;
+  centerTitle?: boolean;
+
+  onPageTurn?: (delta: 1 | -1) => void;
+  /** Salta de hoja entera. */
+  onSheetTurn?: (delta: 1 | -1) => void;
+  canGoPrevSheet?: boolean;
+  canGoNextSheet?: boolean;
   /** La nota ocupa tantas páginas con ese alto de renglón (si el renglón cambió, la cuenta es otra). */
   onPages: (pages: number, line: number) => void;
   /** El cursor quedó en esa página de la nota: la vista tiene que mostrarla. */
@@ -823,10 +833,10 @@ function OpenSheet(props: {
           >
             {isWriting && <div className="write-bar" />}
             <div className="page-lines" style={{ top: TOP, height: g.bodyHeight }} />
-            {index === 0 && (
+            {index === 0 && !props.hideHeader && (
               <header
                 ref={head}
-                className={`page-head${props.fading ? ' fading' : ''}`}
+                className={`page-head${props.fading ? ' fading' : ''}${props.centerTitle !== false ? ' centered-title' : ''}`}
                 style={{
                   top: TOP,
                   paddingLeft: g.padLeft,
@@ -870,6 +880,10 @@ function OpenSheet(props: {
                   </h2>
                 )}
                 <div className="page-meta">
+                  <span className="chip sheet-chip" title={props.counter}>
+                    <span className="sheet-indicator-accent" aria-hidden="true" />
+                    {props.counter}
+                  </span>
                   <span className="page-source">
                     <Icon size={13} />
                     {isDraft ? t('Hoja nueva') : sourceLabel(sheet)}
@@ -1016,32 +1030,46 @@ function OpenSheet(props: {
               left={
                 index === 0 && (
                   <>
-                    {props.onOpenMap ? (
+                    <div className="sheet-nav-group">
                       <button
                         type="button"
-                        className="counter-btn"
-                        onClick={props.onOpenMap}
-                        aria-label={t('Mapa del cuaderno (Ctrl + M)')}
-                        title={t('Mapa del cuaderno (Ctrl + M)')}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: 0,
-                          margin: 0,
-                          font: 'inherit',
-                          color: 'inherit',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
+                        className="nav-btn prev-sheet"
+                        onClick={() => props.onSheetTurn?.(-1)}
+                        disabled={!props.canGoPrevSheet}
+                        aria-label={t('Hoja anterior')}
+                        title={hintOf('sheet-prev') ? t('Hoja anterior ({hint})', { hint: hintOf('sheet-prev') }) : t('Hoja anterior')}
                       >
-                        {props.counter}
-                        <Compass size={11} style={{ opacity: 0.6 }} />
+                        <ChevronsLeft size={13} />
                       </button>
-                    ) : (
-                      props.counter
-                    )}
+                      {props.onOpenMap ? (
+                        <button
+                          type="button"
+                          className="counter-btn sheet-indicator-badge"
+                          onClick={props.onOpenMap}
+                          aria-label={t('Mapa del cuaderno (Ctrl + M)')}
+                          title={t('Mapa del cuaderno (Ctrl + M)')}
+                        >
+                          <span className="sheet-indicator-accent" aria-hidden="true" />
+                          <span className="sheet-indicator-text">{props.counter}</span>
+                          <Compass size={11} className="sheet-map-icon" style={{ opacity: 0.6 }} />
+                        </button>
+                      ) : (
+                        <span className="sheet-indicator-badge">
+                          <span className="sheet-indicator-accent" aria-hidden="true" />
+                          <span className="sheet-indicator-text">{props.counter}</span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="nav-btn next-sheet"
+                        onClick={() => props.onSheetTurn?.(1)}
+                        disabled={!props.canGoNextSheet}
+                        aria-label={t('Hoja siguiente')}
+                        title={hintOf('sheet-next') ? t('Hoja siguiente ({hint})', { hint: hintOf('sheet-next') }) : t('Hoja siguiente')}
+                      >
+                        <ChevronsRight size={13} />
+                      </button>
+                    </div>
                     {writing && (
                       <>
                         <span className={`write-status ${writing.status}`} title={writing.message}>
@@ -1053,7 +1081,43 @@ function OpenSheet(props: {
                   </>
                 )
               }
-              right={pageCount > 1 && page + index < pageCount && t('{page} de {total}', { page: page + index + 1, total: pageCount })}
+              right={
+                pageCount > 1 && page + index < pageCount && (
+                  <div className="page-nav-group">
+                    <button
+                      type="button"
+                      className="nav-btn prev-page"
+                      onClick={() => (isWriting ? props.onTurn(-1) : props.onPageTurn?.(-1))}
+                      disabled={!canTurnBack}
+                      aria-label={t('Página anterior')}
+                      title={
+                        hintOf(isWriting ? 'write-prev' : 'prev')
+                          ? t('Página anterior ({hint})', { hint: hintOf(isWriting ? 'write-prev' : 'prev') })
+                          : t('Página anterior')
+                      }
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <span className="page-nav-counter">
+                      {t('{page} de {total}', { page: page + index + 1, total: pageCount })}
+                    </span>
+                    <button
+                      type="button"
+                      className="nav-btn next-page"
+                      onClick={() => (isWriting ? props.onTurn(1) : props.onPageTurn?.(1))}
+                      disabled={!canTurnOn}
+                      aria-label={t('Página siguiente')}
+                      title={
+                        hintOf(isWriting ? 'write-next' : 'next')
+                          ? t('Página siguiente ({hint})', { hint: hintOf(isWriting ? 'write-next' : 'next') })
+                          : t('Página siguiente')
+                      }
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                )
+              }
             />
           </div>
         ))}
@@ -1232,6 +1296,14 @@ export function Notebook(props: {
   notesDir: string;
   /** Las hojas `.md` se leen con formato. */
   markdown: boolean;
+  hideHeader?: boolean;
+  centerTitle?: boolean;
+
+  onPageTurn?: (delta: 1 | -1) => void;
+  /** Salta de hoja entera. */
+  onSheetTurn?: (delta: 1 | -1) => void;
+  canGoPrevSheet?: boolean;
+  canGoNextSheet?: boolean;
   /** En modo tamaño, se agarró un borde o una esquina del cuaderno. */
   onStretch: (grip: Grip, event: ReactPointerEvent<HTMLElement>) => void;
   /** Acá el cuaderno deja cómo guardar lo que se esté escribiendo, para antes de cerrar. */
@@ -1631,6 +1703,62 @@ export function Notebook(props: {
     [closed, face, openBook, closeTo, done, pos, perView, pageCount, sheets, finishWriting],
   );
 
+  /** Pasa de hoja entera (anterior o siguiente) sin recorrer página por página. */
+  const goSheet = useCallback(
+    (delta: 1 | -1): boolean => {
+      const direction: Direction = delta > 0 ? 'next' : 'prev';
+      if (closed) {
+        const opens = !coverBusy.current && (face === 'back' ? delta < 0 : delta > 0);
+        if (opens) openBook();
+        return opens;
+      }
+      if (turning.current) return false;
+      let next = pos;
+      if (delta > 0) {
+        if (pos.sheet + 1 < sheets.length) {
+          next = { sheet: pos.sheet + 1, page: 0 };
+        } else if (!done) {
+          loadMore();
+          return false;
+        } else {
+          closeTo('back');
+          return true;
+        }
+      } else {
+        if (pos.sheet > 0) {
+          next = { sheet: pos.sheet - 1, page: 0 };
+        } else if (pos.page > 0) {
+          next = { sheet: 0, page: 0 };
+        } else {
+          closeTo('front');
+          return true;
+        }
+      }
+      if (next.sheet === pos.sheet && next.page === pos.page) return false;
+      const changesNote = next.sheet !== pos.sheet;
+      const target = sheets[next.sheet]?.id;
+      if (changesNote) void finishWriting();
+      const apply = () => {
+        turning.current = false;
+        playSound(delta > 0 ? 'turn-next' : 'turn-prev');
+        stickToEnd.current = false;
+        if (changesNote) setPageCount(1);
+        setRetained((kept) => (kept.length ? [] : kept));
+        setTurn((current) => ({ direction, tick: current.tick + 1 }));
+        const found = changesNote ? live.current.sheets.findIndex((item) => item.id === target) : -1;
+        if (changesNote && target !== undefined) anchor.current = target;
+        setPos(found >= 0 ? { sheet: found, page: next.page } : next);
+        setFading(false);
+      };
+      window.clearTimeout(timers.current.turn);
+      turning.current = true;
+      setFading(true);
+      timers.current.turn = window.setTimeout(apply, TURN_OUT);
+      return true;
+    },
+    [closed, face, openBook, closeTo, done, loadMore, pos, sheets, finishWriting],
+  );
+
   const goFirst = useCallback(() => {
     void finishWriting();
     cancelTurn();
@@ -1729,13 +1857,19 @@ export function Notebook(props: {
           lastHeldTurn.current = at;
           go(action === 'next' ? 1 : -1);
         }
+      } else if (action === 'sheet-next' || action === 'sheet-prev') {
+        const at = performance.now();
+        if (!event.repeat || at - lastHeldTurn.current >= HOLD_PACE) {
+          lastHeldTurn.current = at;
+          goSheet(action === 'sheet-next' ? 1 : -1);
+        }
       } else if (action === 'first') goFirst();
       else goLast();
       event.preventDefault();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [go, goFirst, goLast]);
+  }, [go, goSheet, goFirst, goLast]);
 
   // Guardar y dejar de escribir con el teclado, esté donde esté el foco (el texto, el
   // título, un botón de la hoja): Ctrl + Enter guarda y termina; Ctrl + S guarda y se sigue.
@@ -2010,6 +2144,8 @@ export function Notebook(props: {
       ? t('Hoja {n} de {total}', { n: count(pos.sheet + 1), total: count(Math.max(total, pos.sheet + 1)) })
       : t('Hoja {n}', { n: count(pos.sheet + 1) })
     : '';
+  const canGoPrevSheet = pos.sheet > 0 || pos.page > 0;
+  const canGoNextSheet = pos.sheet + 1 < sheets.length || !done;
   const mounted = sheets.filter((item, index) => index === pos.sheet || retained.includes(item.id));
   /** Queda algo adelante: más páginas de esta nota u otra hoja. */
   const canGoOn = pos.page + perView < pageCount || pos.sheet + 1 < sheets.length;
@@ -2018,6 +2154,8 @@ export function Notebook(props: {
   const pageMenu: MenuItem[] = [
     ...props.menuBefore,
     { label: t('Mapa del cuaderno (Ctrl + M)'), icon: <Compass size={14} />, hint: 'Ctrl+M', onSelect: () => setMapOpen(true) },
+    { label: t('Hoja anterior'), icon: <ChevronsLeft size={14} />, hint: hintOf('sheet-prev'), onSelect: () => goSheet(-1) },
+    { label: t('Hoja siguiente'), icon: <ChevronsRight size={14} />, hint: hintOf('sheet-next'), onSelect: () => goSheet(1) },
     { label: t('Ir a la primera hoja'), icon: <ChevronFirst size={14} />, hint: hintOf('first'), separator: true, onSelect: goFirst },
     { label: t('Ir a la última hoja'), icon: <ChevronLast size={14} />, hint: hintOf('last'), onSelect: goLast },
   ];
@@ -2076,6 +2214,12 @@ export function Notebook(props: {
                   chips={props.chips}
                   writer={writer}
                   notesDir={props.notesDir}
+                  hideHeader={props.hideHeader}
+                  centerTitle={props.centerTitle}
+                  onPageTurn={go}
+                  onSheetTurn={goSheet}
+                  canGoPrevSheet={canGoPrevSheet}
+                  canGoNextSheet={canGoNextSheet}
                   markdown={props.markdown}
                   onPages={handlePages}
                   onCaretPage={handleCaretPage}

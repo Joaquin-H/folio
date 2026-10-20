@@ -534,6 +534,8 @@ export function App() {
         compose={compose}
         notesDir={overview?.notesDir ?? ''}
         markdown={prefs.markdown}
+        hideHeader={prefs.hideHeader}
+        centerTitle={prefs.centerTitle}
         onStretch={startStretch}
         flush={flush}
       />

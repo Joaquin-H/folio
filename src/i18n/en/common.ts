@@ -11,6 +11,8 @@ export const common: Record<string, string> = {
   imágenes: 'images',
   'versión anterior': 'previous version',
   'versiones anteriores': 'previous versions',
+  'Hoja anterior': 'Previous sheet',
+  'Hoja siguiente': 'Next sheet',
 
   // Fechas y tiempo (format.ts)
   Hoy: 'Today',

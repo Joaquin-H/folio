@@ -546,6 +546,33 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
+
+
+/* Encabezado centrado de la hoja */
+.page-head.centered-title .page-date {
+  justify-content: center;
+}
+
+.page-head.centered-title .page-title {
+  margin-right: auto;
+  margin-left: auto;
+  text-align: center;
+}
+
+.page-head.centered-title .page-title.editable {
+  margin-right: auto;
+  margin-left: auto;
+  justify-content: center;
+}
+
+.page-head.centered-title .page-title.editable input {
+  text-align: center;
+}
+
+.page-head.centered-title .page-meta {
+  justify-content: center;
+}
+
 .page-source {
   display: inline-flex;
   gap: 5px;
@@ -676,6 +703,89 @@ textarea:focus-visible {
   gap: 8px;
   align-items: center;
   min-width: 0;
+}
+
+
+/* Navegación de hojas y páginas al pie */
+.sheet-nav-group,
+.page-nav-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: auto;
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--label-3);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 0.12s, color 0.12s, opacity 0.12s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.sheet-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.sheet-indicator-badge:hover {
+  background: var(--fill-hover, var(--fill));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sheet-indicator-accent {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent-soft);
+  flex-shrink: 0;
+}
+
+.sheet-chip .sheet-indicator-accent {
+  margin-right: 2px;
+}
+
+.page-nav-counter {
+  padding: 0 3px;
+  color: var(--label-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
 .pill {
