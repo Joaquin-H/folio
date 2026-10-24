@@ -2723,6 +2723,117 @@ kbd.keys {
   opacity: 0.35;
 }
 
+html[data-window='capture'] body {
+  background: var(--paper);
+}
+
+.capture-head-tools .icon-button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  color: var(--label-3);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.capture-head-tools .icon-button:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.capture-head-tools .capture-pin-btn.pinned {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.capture-head-tools .capture-pin-btn.pinned:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.capture-head-tools .capture-pin-btn.pinned svg {
+  transform: rotate(35deg);
+  transition: transform 0.2s ease;
+}
+
+/* ---- dock de hoja suelta colapsada (Loose Sheet Dock) ------------------- */
+
+.loose-dock {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--paper);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.16),
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    inset 0 0 0 1px var(--paper-edge);
+  cursor: grab;
+  user-select: none;
+  overflow: hidden;
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.loose-dock:hover {
+  background: color-mix(in srgb, var(--paper) 93%, var(--accent));
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.22),
+    0 2px 5px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1.5px var(--accent);
+}
+
+.loose-dock:active {
+  cursor: grabbing;
+}
+
+.loose-dock::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 2px;
+  background: var(--margin-line);
+  content: '';
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+.loose-dock-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding-left: 4px;
+  color: var(--label-2);
+  transition: color 0.15s ease;
+  pointer-events: none;
+}
+
+.loose-dock:hover .loose-dock-inner {
+  color: var(--accent);
+}
+
+.loose-dock-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--paper);
+  pointer-events: none;
+}
+
 /* ---- movimiento -------------------------------------------------------- */
 
 @keyframes spin {

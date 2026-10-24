@@ -3,6 +3,13 @@ export const notebook: Record<string, string> = {
   // CaptureWindow.tsx
   'Nueva hoja': 'New sheet',
   'Sin título': 'Untitled',
+  'Colapsar hoja': 'Collapse sheet',
+  'Colapsar en el dock': 'Collapse into dock',
+  'Fijar expandida': 'Pin expanded',
+  'Fijar expandida para comparar con otras ventanas': 'Pin expanded to compare with other windows',
+  'Desfijar hoja (se colapsa al cambiar de ventana)': 'Unpin sheet (collapses when switching windows)',
+  'Expandir hoja suelta': 'Expand loose sheet',
+  'Clic para expandir': 'Click to expand',
   'Dictar con la voz (Win + H)': 'Dictate with voice (Win + H)',
   'Dictar con la voz': 'Dictate with voice',
   'Cambiar el título de la hoja': 'Change the sheet title',
