@@ -2736,7 +2736,8 @@ kbd.keys {
   opacity: 0.35;
 }
 
-html[data-window='capture'] body {
+html[data-window='capture'] body,
+html[data-window='tearoff'] body {
   background: var(--paper);
 }
 

@@ -1,6 +1,7 @@
 // Datos y acciones de una hoja, separados de cómo se dibuja en el cuaderno.
 import { useEffect, useState } from 'react';
 import {
+  ExternalLink,
   EyeOff,
   FileText,
   FolderOpen,
@@ -17,6 +18,7 @@ import {
 import { api } from '../api';
 import { parentFolder } from '../format';
 import { quote, t, useT } from '../i18n';
+import { hintOf } from '../shortcuts';
 import type { Category, SheetDetail, SheetSummary, Source } from '../types';
 import { Confirm, Presence, type MenuItem } from './ui';
 
@@ -106,8 +108,15 @@ export function useSheetMenus(
   ];
 
   const togglePinned = () => run(api.setSheetPinned(sheet.id, !sheet.pinned));
+  const tearOff = () => run(api.tearOffSheet(sheet.id, false));
 
   const moreItems: MenuItem[] = [
+    {
+      label: t('Arrancar hoja'),
+      icon: <ExternalLink size={14} />,
+      hint: hintOf('tear-off'),
+      onSelect: tearOff,
+    },
     {
       label: sheet.pinned ? t('Desfijar hoja') : t('Fijar hoja'),
       icon: sheet.pinned ? <PinOff size={14} /> : <Pin size={14} />,
@@ -185,6 +194,7 @@ export function useSheetMenus(
     moreItems,
     error,
     togglePinned,
+    tearOff,
     /** Saca la hoja de la papelera. */
     restore: () => run(api.setSheetHidden(sheet.id, false)),
     dialogs,

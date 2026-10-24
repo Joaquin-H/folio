@@ -259,6 +259,7 @@ export const settings: Record<string, string> = {
   'Primera hoja': 'First page',
   'Última hoja': 'Last page',
   'Escribir en la hoja': 'Write on page',
+  'Abre la hoja actual en una ventana flotante independiente.': 'Opens the current sheet in an independent floating window.',
   'Hoja nueva': 'New page',
   'Volver de la papelera o del secret-book': 'Return from trash or secret-book',
   'Dar vuelta el cuaderno': 'Flip the notebook',

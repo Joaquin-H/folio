@@ -7,6 +7,7 @@ import type {
   CaptureSeed,
   CategorySuggestion,
   ClassifierTest,
+  FloatingRect,
   GlobalShortcut,
   DayCount,
   FolderStat,
@@ -20,6 +21,7 @@ import type {
   SettingsPatch,
   SheetDetail,
   SheetSummary,
+  TornOffSheetState,
 } from './types';
 
 export interface Api {
@@ -125,6 +127,22 @@ export interface Api {
   takeCaptureSeed(): Promise<CaptureSeed | null>;
   /** Inicia el dictado por voz de Windows (Win + H). */
   startDictation(): Promise<void>;
+  /**
+   * Abre una hoja del cuaderno en su propia ventana flotante («Arrancar hoja»).
+   * Si ya está abierta, la trae al frente sin duplicar la ventana.
+   */
+  tearOffSheet(id: number, collapsed?: boolean): Promise<TornOffSheetState>;
+  /** Devuelve una hoja arrancada al cuaderno (cierra su ventana flotante y la saca de la lista persistida). */
+  returnTornOffSheet(id: number): Promise<void>;
+  /** Lista las hojas arrancadas actualmente abiertas/persistidas. */
+  listTornOffSheets(): Promise<TornOffSheetState[]>;
+  /** Actualiza el estado (colapsada, fijada, posición) de una hoja arrancada. */
+  updateTornOffState(id: number, patch: { collapsed?: boolean; pinned?: boolean; x?: number; y?: number }): Promise<void>;
+  /**
+   * Expande o colapsa una ventana flotante respetando los bordes del monitor actual (`work_area`)
+   * y apilando los íconos colapsados sin superponerlos.
+   */
+  setFloatingMode(collapsed: boolean, preferredX?: number, preferredY?: number): Promise<FloatingRect>;
   /**
    * Avisa a la hoja suelta, si ya estaba abierta, de que le llegó un texto nuevo
    * (`takeCaptureSeed` lo entrega). Devuelve la función para dejar de escuchar.
@@ -233,6 +251,12 @@ const tauriApi: Api = {
   integrationText: (tool) => invoke('integration_text', { tool }),
   takeCaptureSeed: () => invoke('take_capture_seed'),
   startDictation: () => invoke('start_dictation'),
+  tearOffSheet: (id, collapsed) => invoke('tear_off_sheet', { id, collapsed }),
+  returnTornOffSheet: (id) => invoke('return_torn_off_sheet', { id }),
+  listTornOffSheets: () => invoke('list_torn_off_sheets'),
+  updateTornOffState: (id, patch) => invoke('update_torn_off_state', { id, ...patch }),
+  setFloatingMode: (collapsed, preferredX, preferredY) =>
+    invoke('set_floating_mode', { collapsed, preferredX, preferredY }),
   onCaptureSeed(callback) {
     const unlisten = listen('book:capture-seed', callback);
     return () => void unlisten.then((stop) => stop());

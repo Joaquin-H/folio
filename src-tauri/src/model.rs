@@ -274,6 +274,30 @@ pub struct DayCount {
     pub count: i64,
 }
 
+/// Estado persistido de una hoja arrancada del cuaderno para restaurarla al reabrir Folio.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TornOffSheetState {
+    pub id: i64,
+    pub collapsed: bool,
+    pub pinned: bool,
+    pub expanded_x: Option<f64>,
+    pub expanded_y: Option<f64>,
+    pub collapsed_x: Option<f64>,
+    pub collapsed_y: Option<f64>,
+}
+
+/// Posición y tamaño lógicos de una ventana flotante (hoja suelta o arrancada).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FloatingRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub collapsed: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

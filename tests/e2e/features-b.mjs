@@ -247,6 +247,95 @@ test('feature 9: hoja suelta colapsa a icono de dock, expande y toggle pin', asy
   equal(await page.ask('count', '.loose-dock'), 0, 'el dock no debe verse al expandir');
   equal(await page.evaluate("localStorage.getItem('folio:capture:collapsed')"), 'false', 'debe guardar collapsed false en localStorage');
   check((await page.ask('count', '.loose-text')) > 0, 'el textarea debe estar presente al expandir');
+
+  // 5. Bug 1: Si el icono colapsado está pegado al borde izquierdo (x = 12) o derecho (x = 1220) o inferior (y = 850),
+  // al expandir abre hacia donde hay espacio y queda estrictamente dentro de la pantalla.
+  await page.clickOn('.dock-collapse');
+  await page.until(async () => (await page.ask('count', '.loose-dock')) > 0, 'no colapsó');
+  await page.evaluate(`localStorage.setItem('folio:capture:pos:collapsed', JSON.stringify({ x: 12, y: 850 }))`);
+  await page.clickOn('.loose-dock');
+  await page.until(async () => (await page.ask('count', '.loose')) > 0, 'no expandió desde borde izquierdo/inferior');
+  const leftRect = await page.evaluate(`({
+    x: Number(document.querySelector('.loose')?.dataset.floatingX),
+    y: Number(document.querySelector('.loose')?.dataset.floatingY),
+  })`);
+  equal(leftRect.x, 12, 'cerca del borde izquierdo debe expandir hacia la derecha (x = 12, no negativo)');
+  check(leftRect.y >= 8 && leftRect.y + 572 <= 900 - 8, `cerca del borde inferior debe quedar dentro de la pantalla (y=${leftRect.y})`);
+});
+
+// ---- Feature 9b: Arrancar hoja (Tear-off sheets) ----
+
+test('feature 9b: arrancar hoja desde menú y atajo, múltiples hojas sin duplicar, apilado colapsado y devolver al cuaderno', async (page) => {
+  await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'double' } });
+  await page.evaluate(`
+    localStorage.removeItem('folio:mock:tornOffSheets');
+    localStorage.removeItem('folio:mock:floatingRects');
+  `);
+
+  // 1. Arrancar la primera hoja (Pendientes de hoy, id 2) desde el menú ⋯ -> «Arrancar hoja»
+  await page.clickOn('.page-actions button[aria-label="Menú"]');
+  await page.until(async () => (await page.ask('count', '[role="menuitem"]')) > 0, 'no se abrió el menú de la hoja');
+  await page.clickOn('[role="menuitem"]', 'Arrancar hoja');
+
+  await page.until(
+    async () => (await api(page, 'api.listTornOffSheets()')).length === 1,
+    'la hoja no quedó registrada como arrancada'
+  );
+  const firstTorn = (await api(page, 'api.listTornOffSheets()'))[0];
+  equal(firstTorn.id, 2, 'la hoja arrancada es Pendientes de hoy (id 2)');
+
+  // 2. Intentar arrancarla de nuevo con el atajo Ctrl+T no duplica la ventana
+  await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', ctrlKey: true, bubbles: true, cancelable: true }))`);
+  await sleep(120);
+  const afterDuplicate = await api(page, 'api.listTornOffSheets()');
+  equal(afterDuplicate.length, 1, 'arrancar la misma hoja no la duplica');
+
+  // 3. Arrancar una segunda hoja (reunion-equipo.md, id 3) para tener múltiples hojas flotantes abiertas a la vez
+  await api(page, 'api.tearOffSheet(3, false)');
+  const bothTorn = await api(page, 'api.listTornOffSheets()');
+  equal(bothTorn.length, 2, 'hay dos hojas arrancadas simultáneamente');
+
+  // 4. Abrir la ventana flotante de la hoja 3 (?window=tearoff&id=3), editar, fijar, colapsar y verificar apilado sin superposición
+  await page.open({ query: '?window=tearoff&id=3' });
+  await page.until(async () => (await page.ask('count', '.tearoff-sheet')) > 0, 'no cargó la ventana de la hoja arrancada 3');
+  equal(await page.ask('label', '.page-title'), 'reunion-equipo.md', 'el título de la hoja arrancada coincide');
+
+  // Editar texto y verificar que se guarda en el cuaderno
+  await page.clickOn('.loose-text');
+  await page.type('\n- [x] Nota editada desde ventana flotante');
+  await page.until(
+    async () => ((await api(page, 'api.getSheet(3)'))?.content ?? '').includes('Nota editada desde ventana flotante'),
+    'el cambio en la hoja flotante no se guardó en el cuaderno'
+  );
+
+  // Colapsar la hoja 3 al dock
+  await page.clickOn('.dock-collapse');
+  await page.until(async () => (await page.ask('count', '.tearoff-dock')) > 0, 'la hoja 3 no colapsó al dock');
+  const pos3 = await page.evaluate(`({
+    x: Number(document.querySelector('.tearoff-dock')?.dataset.floatingX),
+    y: Number(document.querySelector('.tearoff-dock')?.dataset.floatingY),
+  })`);
+
+  // Abrir la hoja 2 (?window=tearoff&id=2) y colapsarla en la misma zona: los íconos deben apilarse sin superponerse
+  await page.open({ query: '?window=tearoff&id=2' });
+  await page.until(async () => (await page.ask('count', '.tearoff-sheet')) > 0, 'no cargó la ventana de la hoja arrancada 2');
+  await page.clickOn('.dock-collapse');
+  await page.until(async () => (await page.ask('count', '.tearoff-dock')) > 0, 'la hoja 2 no colapsó al dock');
+  const pos2 = await page.evaluate(`({
+    x: Number(document.querySelector('.tearoff-dock')?.dataset.floatingX),
+    y: Number(document.querySelector('.tearoff-dock')?.dataset.floatingY),
+  })`);
+  check(Math.abs(pos2.x - pos3.x) >= 52 || Math.abs(pos2.y - pos3.y) >= 52, `los íconos colapsados no deben superponerse (${JSON.stringify(pos3)} vs ${JSON.stringify(pos2)})`);
+
+  // Expandir la hoja 2 y devolverla al cuaderno («Devolver al cuaderno»)
+  await page.clickOn('.tearoff-dock');
+  await page.until(async () => (await page.ask('count', '.tearoff-sheet')) > 0, 'la hoja 2 no se expandió');
+  await page.clickOn('.return-sheet-btn');
+  await page.until(async () => (await page.ask('count', '.loose.returned')) > 0, 'la hoja 2 no se devolvió al cuaderno');
+
+  const remaining = await api(page, 'api.listTornOffSheets()');
+  equal(remaining.length, 1, 'solo queda 1 hoja arrancada tras devolver la hoja 2 al cuaderno');
+  equal(remaining[0].id, 3, 'la hoja que sigue abierta para restaurar al reabrir Folio es la 3');
 });
 
 // ---- Feature 10: Storage (historial comprimido/dedupe, sin regresiones) ----
