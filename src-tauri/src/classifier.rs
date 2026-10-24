@@ -354,7 +354,7 @@ mod tests {
     const MINUTE: i64 = 60_000;
     const DAY: i64 = 24 * 60 * MINUTE;
     const TRABAJO: i64 = 1;
-    const CASA: i64 = 4;
+    const CASA: i64 = 3;
 
     fn db() -> Db {
         Db::open(Path::new(":memory:")).expect("base en memoria")

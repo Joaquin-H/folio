@@ -98,23 +98,15 @@ const SUMMARY_COLS: &str = "s.id, s.source, s.title, s.path, \
 
 const DEFAULT_CATEGORIES: &[(&str, &str, &str)] = &[
     ("Trabajo", "Tareas, reuniones, pendientes y temas laborales", "#007AFF"),
-    ("Proyectos", "Planes, ideas y avances de proyectos propios o de software", "#5856D6"),
-    ("Código", "Fragmentos de código, comandos de terminal y configuraciones técnicas", "#30B0C7"),
+    ("Código", "Fragmentos de código, comandos de terminal y configuraciones técnicas", "#5856D6"),
     ("Casa", "Hogar, trámites domésticos, arreglos y familia", "#34C759"),
-    ("Compras", "Listas de compras, productos y precios", "#FF9500"),
-    ("Finanzas", "Gastos, pagos, cuentas y presupuestos", "#FFCC00"),
-    ("Salud", "Turnos médicos, medicación y ejercicio", "#FF2D55"),
     ("Ideas", "Ideas sueltas, reflexiones y cosas para investigar", "#AF52DE"),
 ];
 
 const DEFAULT_CATEGORIES_EN: &[(&str, &str, &str)] = &[
     ("Work", "Tasks, meetings, to-dos and work topics", "#007AFF"),
-    ("Projects", "Plans, ideas, personal projects or software development", "#5856D6"),
-    ("Code", "Code snippets, terminal commands and technical configurations", "#30B0C7"),
+    ("Code", "Code snippets, terminal commands and technical configurations", "#5856D6"),
     ("Home", "House, domestic chores, repairs and family", "#34C759"),
-    ("Shopping", "Shopping lists, products and prices", "#FF9500"),
-    ("Finance", "Expenses, payments, accounts and budgets", "#FFCC00"),
-    ("Health", "Medical appointments, medication and fitness", "#FF2D55"),
     ("Ideas", "Random thoughts, reflections and topics to explore", "#AF52DE"),
 ];
 
@@ -354,6 +346,7 @@ fn escape_like(input: &str) -> String {
 fn view_conditions(filter: &ListFilter, conds: &mut Vec<String>, args: &mut Vec<Box<dyn ToSql>>) {
     match filter.view.as_str() {
         "today" => conds.push("s.secret = 0 AND s.hidden = 0 AND (strftime('%Y-%m-%d', s.modified_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') OR strftime('%Y-%m-%d', s.created_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime'))".into()),
+        "pinned" => conds.push("s.secret = 0 AND s.hidden = 0 AND s.pinned = 1".into()),
         "secret" => conds.push("s.secret = 1 AND s.hidden = 0".into()),
         "hidden" => conds.push("s.hidden = 1".into()),
         "uncategorized" => {
@@ -1572,6 +1565,7 @@ impl Db {
             "SELECT \
                sum(secret = 0 AND hidden = 0), \
                sum(secret = 0 AND hidden = 0 AND (strftime('%Y-%m-%d', modified_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') OR strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime'))), \
+               sum(secret = 0 AND hidden = 0 AND pinned = 1), \
                sum(secret = 0 AND hidden = 0 AND category_id IS NULL), \
                sum(secret = 1 AND hidden = 0), \
                sum(hidden = 1) \
@@ -1581,9 +1575,10 @@ impl Db {
                 Ok(Counts {
                     all: r.get::<_, Option<i64>>(0)?.unwrap_or(0),
                     today: r.get::<_, Option<i64>>(1)?.unwrap_or(0),
-                    uncategorized: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
-                    secret: r.get::<_, Option<i64>>(3)?.unwrap_or(0),
-                    hidden: r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+                    pinned: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    uncategorized: r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                    secret: r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+                    hidden: r.get::<_, Option<i64>>(5)?.unwrap_or(0),
                 })
             },
         )
@@ -3102,5 +3097,57 @@ mod tests {
         let unpinned_list = list_all(None, None, None, 10);
         assert_eq!(unpinned_list.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id3, id2, id1]);
         assert!(!unpinned_list[0].pinned);
+    }
+
+    #[test]
+    fn vista_pinned_filtra_solo_fijadas_y_actualiza_counts() {
+        let db = db();
+        db.upsert_sheet(&incoming("file", "/notas/a.txt", "nota a"), &session()).unwrap();
+        db.upsert_sheet(&incoming("file", "/notas/b.txt", "nota b"), &session()).unwrap();
+        let id_a = db.sheet_id("file", "/notas/a.txt").unwrap();
+        let id_b = db.sheet_id("file", "/notas/b.txt").unwrap();
+
+        assert_eq!(db.counts().unwrap().pinned, 0);
+        db.set_sheet_pinned(id_a, true).unwrap();
+        assert_eq!(db.counts().unwrap().pinned, 1);
+
+        let pinned_sheets = db
+            .list_sheets(&ListFilter {
+                view: "pinned".into(),
+                category_id: None,
+                query: None,
+                before_ts: None,
+                before_id: None,
+                before_pinned: None,
+                until: None,
+                limit: Some(10),
+            })
+            .unwrap();
+        assert_eq!(pinned_sheets.len(), 1);
+        assert_eq!(pinned_sheets[0].id, id_a);
+
+        // Si pasa a papelera o secret, ya no cuenta en pinned
+        db.set_sheet_hidden(id_a, true).unwrap();
+        assert_eq!(db.counts().unwrap().pinned, 0);
+        db.set_sheet_hidden(id_a, false).unwrap();
+        assert_eq!(db.counts().unwrap().pinned, 1);
+        let _ = id_b;
+    }
+
+    #[test]
+    fn instalacion_nueva_crea_4_categorias_comunes_mas_recortes_sin_tocar_existentes() {
+        let db = db();
+        let cats = db.categories().unwrap();
+        let clipping_id = db.clippings_category_id().unwrap();
+        let common: Vec<_> = cats.iter().filter(|c| c.id != clipping_id).collect();
+        assert_eq!(common.len(), 4);
+
+        // Si el usuario borra una categoría y reabre la base, seed() no vuelve a crear las de fábrica
+        db.delete_category(common[0].id).unwrap();
+        let conn = db.conn.into_inner().unwrap();
+        let db2 = Db::setup(conn, crate::crypto::Vault::in_memory_with_key([7u8; 32])).unwrap();
+        let cats2 = db2.categories().unwrap();
+        let common2: Vec<_> = cats2.iter().filter(|c| c.id != clipping_id).collect();
+        assert_eq!(common2.len(), 3);
     }
 }

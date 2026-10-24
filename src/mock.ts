@@ -21,6 +21,7 @@ let categories: Omit<Category, 'count'>[] = [
   { id: 6, name: 'Finanzas', description: 'Gastos, pagos y presupuestos', color: '#FFCC00' },
   { id: 7, name: 'Salud', description: 'Turnos médicos, medicación y ejercicio', color: '#FF2D55' },
   { id: 8, name: 'Ideas', description: 'Ideas sueltas y cosas para investigar', color: '#AF52DE' },
+  { id: 9, name: 'Recortes', description: 'Recortes y capturas rápidas desde otras aplicaciones', color: '#FF9500' },
 ];
 
 type Seed = [title: string, source: Source, ageHours: number, categoryId: number | null, content: string];
@@ -298,6 +299,7 @@ export function seedMockEnglish() {
     [6, 'Finance', 'Monthly expenses, budgets, and invoices'],
     [7, 'Health', 'Appointments, workouts, and routines'],
     [8, 'Ideas', 'Quick thoughts and topics to research'],
+    [9, 'Clippings', 'Clippings and quick captures from other apps'],
   ];
   for (const [id, name, description] of enCats) {
     const cat = categories.find((c) => c.id === id);
@@ -378,15 +380,17 @@ function matches(sheet: MockSheet, filter: ListFilter): boolean {
   const inView =
     filter.view === 'today'
       ? visible && isToday(sheet.modifiedAt)
-      : filter.view === 'secret'
-        ? sheet.secret && !sheet.hidden
-        : filter.view === 'hidden'
-          ? sheet.hidden
-          : filter.view === 'uncategorized'
-            ? visible && sheet.categoryId === null
-            : filter.view === 'category'
-              ? visible && sheet.categoryId === filter.categoryId
-              : visible;
+      : filter.view === 'pinned'
+        ? visible && sheet.pinned
+        : filter.view === 'secret'
+          ? sheet.secret && !sheet.hidden
+          : filter.view === 'hidden'
+            ? sheet.hidden
+            : filter.view === 'uncategorized'
+              ? visible && sheet.categoryId === null
+              : filter.view === 'category'
+                ? visible && sheet.categoryId === filter.categoryId
+                : visible;
   if (!inView) return false;
   const query = filter.query?.trim().toLowerCase();
   if (!query) return true;
@@ -518,6 +522,7 @@ export const mockApi: Api = {
       counts: {
         all: visible.length,
         today: visible.filter((s) => isToday(s.modifiedAt)).length,
+        pinned: visible.filter((s) => s.pinned).length,
         uncategorized: visible.filter((s) => s.categoryId === null).length,
         secret: sheets.filter((s) => s.secret && !s.hidden).length,
         hidden: sheets.filter((s) => s.hidden).length,

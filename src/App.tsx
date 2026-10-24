@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { BookOpen, Lock, Minus, Power, Settings2, Sun, Trash2, X } from 'lucide-react';
+import { BookOpen, Lock, Minus, Pin, Power, Scissors, Settings2, Sun, Trash2, X } from 'lucide-react';
 import { api, isTauri, type Spot } from './api';
 import { Finder } from './components/Finder';
 import { Notebook, type FilterChip, type NotebookActions, type NotebookTab } from './components/Notebook';
@@ -31,6 +31,7 @@ const isMac = /Mac/i.test(navigator.userAgent);
 const EMPTY: Record<View['kind'], { title: string; hint: string }> = {
   all: { title: mark('Todavía no hay hojas'), hint: mark('Escribí en el Bloc de notas o guardá un .txt o .md: va a aparecer acá solo.') },
   today: { title: mark('Sin hojas hoy'), hint: mark('Las hojas que crees o edites hoy aparecen acá.') },
+  pinned: { title: mark('Sin hojas fijas'), hint: mark('Fijá cualquier hoja desde su encabezado para tenerla siempre a mano acá.') },
   uncategorized: { title: mark('Todo tiene categoría'), hint: mark('Las hojas sin categoría aparecen acá.') },
   secret: { title: mark('El secret-book está vacío'), hint: mark('Las hojas marcadas como sensibles se guardan acá, fuera del cuaderno y de la búsqueda.') },
   hidden: { title: mark('La papelera está vacía'), hint: mark('Lo que mandes a la papelera deja el cuaderno, pero podés recuperarlo desde acá.') },
@@ -40,6 +41,7 @@ const EMPTY: Record<View['kind'], { title: string; hint: string }> = {
 const VIEW_LABEL: Record<Exclude<View['kind'], 'category'>, string> = {
   all: mark('Todas las hojas'),
   today: mark('Hoy'),
+  pinned: mark('Fijas'),
   uncategorized: mark('Sin categoría'),
   secret: mark('Secret-book'),
   hidden: mark('Papelera'),
@@ -465,18 +467,40 @@ export function App() {
   const tabs = useMemo<NotebookTab[] | null>(() => {
     if (!prefs.tabs) return null;
     const counts = overview?.counts;
+    const categories = overview?.categories ?? [];
+    const clippingsId =
+      overview?.clippingsCategoryId ??
+      categories.find((c) => ['recortes', 'clippings'].includes(c.name.toLowerCase()))?.id ??
+      null;
+    const clippingsCat = clippingsId !== null ? categories.find((c) => c.id === clippingsId) : undefined;
+    const commonCategories = categories.filter((c) => c.id !== clippingsId);
     return [
       { key: 'all', view: { kind: 'all' }, label: t('Todas'), count: counts?.all ?? 0, color: 'var(--paper)', ink: 'var(--label)' },
-      { key: 'today', view: { kind: 'today' }, label: t('Hoy'), count: counts?.today ?? 0, color: '#FF9500', ink: '#fff', icon: <Sun size={13} /> },
-      ...(overview?.categories ?? []).map<NotebookTab>((c) => ({
+      ...commonCategories.map<NotebookTab>((c) => ({
         key: `category-${c.id}`,
         view: { kind: 'category', id: c.id },
         label: c.name,
         count: c.count,
         color: c.color,
         ink: readableOn(c.color),
+        colorOnly: true,
       })),
-      { key: 'uncategorized', view: { kind: 'uncategorized' }, label: t('Sin categoría'), count: counts?.uncategorized ?? 0, color: '#8E8E93', ink: '#fff' },
+      { key: 'today', view: { kind: 'today' }, label: t('Hoy'), count: counts?.today ?? 0, color: '#FF9500', ink: '#fff', icon: <Sun size={13} />, atEnd: true },
+      { key: 'pinned', view: { kind: 'pinned' }, label: t('Fijas'), count: counts?.pinned ?? 0, color: '#5856D6', ink: '#fff', icon: <Pin size={13} />, atEnd: true },
+      ...(clippingsCat
+        ? [
+            {
+              key: 'clippings',
+              view: { kind: 'category' as const, id: clippingsCat.id },
+              label: t('Recortes'),
+              count: clippingsCat.count,
+              color: clippingsCat.color,
+              ink: readableOn(clippingsCat.color),
+              icon: <Scissors size={13} />,
+              atEnd: true,
+            },
+          ]
+        : []),
       { key: 'secret', view: { kind: 'secret' }, label: t('Secret-book'), count: counts?.secret ?? 0, color: '#3A3A3C', ink: '#fff', icon: <Lock size={13} />, atEnd: true },
       { key: 'hidden', view: { kind: 'hidden' }, label: t('Papelera'), count: counts?.hidden ?? 0, color: '#AEAEB2', ink: '#1d1d1f', icon: <Trash2 size={13} />, atEnd: true },
     ];

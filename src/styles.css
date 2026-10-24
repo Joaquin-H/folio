@@ -375,6 +375,12 @@ html[data-window='notebook'][data-borderless='true'][data-theme='dark'] .book {
   padding: 0;
 }
 
+.tab.color-only {
+  flex: none;
+  width: 24px;
+  padding: 0;
+}
+
 .tab.at-end {
   margin-left: auto;
 }

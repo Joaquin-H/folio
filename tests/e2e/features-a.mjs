@@ -316,6 +316,42 @@ test('5. Hojas del día (Hoy): vista today, inclusión de notas de hoy, exclusi�
   await page.clickOn('.tab[aria-label="Ver Hoy"]');
   await page.until(() => page.ask('count', '.tab.active[aria-label="Ver Todas"]'), 'hacer clic en la solapa activa Hoy no volvió a Todas');
   await page.settle(300);
+
+  // 10. Verificar layout de pestañas: izquierda (Todas + categorías comunes solo-color con tooltip), derecha (Hoy, Fijas, Recortes, Secret-book, Papelera)
+  const tabLayout = await page.evaluate(`(() => {
+    const allTabs = [...document.querySelectorAll('.tabs .tab')];
+    const leftTabs = allTabs.filter((t) => !t.classList.contains('at-end'));
+    const rightTabs = allTabs.filter((t) => t.classList.contains('at-end'));
+    const commonColorTabs = leftTabs.slice(1);
+    return {
+      firstLeftLabel: leftTabs[0]?.getAttribute('aria-label'),
+      commonAllColorOnly: commonColorTabs.length > 0 && commonColorTabs.every((t) => t.classList.contains('color-only') && t.textContent.trim() === '' && (t.getAttribute('title') || '').includes(',')),
+      rightLabels: rightTabs.map((t) => t.getAttribute('aria-label')),
+    };
+  })()`);
+  equal(tabLayout.firstLeftLabel, 'Ver Todas', 'la primera pestaña izquierda debe ser Ver Todas');
+  check(tabLayout.commonAllColorOnly, 'las pestañas de categorías comunes deben ser solo-color sin texto y con tooltip del nombre');
+  equal(
+    JSON.stringify(tabLayout.rightLabels),
+    JSON.stringify(['Ver Hoy', 'Ver Fijas', 'Ver Recortes', 'Ver Secret-book', 'Ver Papelera']),
+    `orden incorrecto en pestañas derechas: ${JSON.stringify(tabLayout.rightLabels)}`,
+  );
+
+  // 11. Verificar pestaña "Fijas": fijar una hoja incrementa counts.pinned y aparece en la vista Fijas
+  const noteToPin = todaySheets.find((s) => s.title.includes(todayTitle));
+  check(noteToPin, 'no se encontró la nota creada hoy para fijarla');
+  await api(page, `api.setSheetPinned(${noteToPin.id}, true)`);
+  await sleep(250);
+
+  await page.clickOn('.tab[aria-label="Ver Fijas"]');
+  await page.until(() => page.ask('count', '.tab.active[aria-label="Ver Fijas"]'), 'la solapa "Fijas" no quedó activa');
+  await page.settle(300);
+
+  const pinnedOverview = await api(page, 'api.getOverview()');
+  const pinnedSheets = await api(page, "api.listSheets({ view: 'pinned' })");
+  check(pinnedSheets.length > 0 && pinnedSheets.every((s) => s.pinned && !s.secret && !s.hidden), 'la vista pinned debe devolver solo hojas fijadas visibles');
+  check(pinnedSheets.some((s) => s.id === noteToPin.id), 'la hoja fijada debe aparecer en la vista pinned');
+  equal(pinnedSheets.length, pinnedOverview.counts.pinned, 'counts.pinned debe coincidir con las hojas de la vista pinned');
 });
 
 // -----------------------------------------------------------------------------

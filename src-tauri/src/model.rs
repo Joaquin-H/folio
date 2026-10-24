@@ -46,7 +46,7 @@ pub struct SheetDetail {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListFilter {
-    /// "all" | "today" | "uncategorized" | "secret" | "hidden" | "category"
+    /// "all" | "today" | "pinned" | "uncategorized" | "secret" | "hidden" | "category"
     pub view: String,
     pub category_id: Option<i64>,
     pub query: Option<String>,
@@ -74,6 +74,7 @@ pub struct Category {
 pub struct Counts {
     pub all: i64,
     pub today: i64,
+    pub pinned: i64,
     pub uncategorized: i64,
     pub secret: i64,
     pub hidden: i64,
