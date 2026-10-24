@@ -141,6 +141,12 @@ export const settings: Record<string, string> = {
   'Color de la categoría nueva': 'New category color',
   'Nombre de la categoría nueva': 'New category name',
   'Nueva categoría': 'New category',
+  'Recortes organizados': 'Clippings organized',
+  'Se asignaron {n} recortes a la categoría Recortes.': 'Assigned {n} clippings to the Clippings category.',
+  'Organizar recortes existentes': 'Organize existing clippings',
+  'Se encontraron {n} recortes sin categorizar. Podés moverlos automáticamente a la categoría Recortes.':
+    'Found {n} uncategorized clippings. You can automatically move them to the Clippings category.',
+  'Asignar a Recortes': 'Assign to Clippings',
 
   // CoverOptions.tsx
   Lisa: 'Plain',

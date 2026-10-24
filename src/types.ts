@@ -134,6 +134,8 @@ export interface Overview {
   jev: JevStatus;
   /** Carpeta donde Book guarda, como archivos de texto, las hojas que se escriben en él. */
   notesDir: string;
+  clippingsCategoryId?: number | null;
+  untaggedClippingsCount?: number;
 }
 
 export interface Root {

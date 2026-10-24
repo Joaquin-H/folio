@@ -50,6 +50,8 @@ export interface Api {
   createCategory(name: string, description: string, color: string): Promise<number>;
   updateCategory(id: number, name: string, description: string, color: string): Promise<void>;
   deleteCategory(id: number): Promise<void>;
+  ensureClippingsCategory(): Promise<number>;
+  migrateClippings(): Promise<number>;
   getSettings(): Promise<Settings>;
   updateSettings(patch: SettingsPatch): Promise<void>;
   pickFolder(): Promise<string | null>;
@@ -195,6 +197,8 @@ const tauriApi: Api = {
   updateCategory: (id, name, description, color) =>
     invoke('update_category', { id, name, description, color }),
   deleteCategory: (id) => invoke('delete_category', { id }),
+  ensureClippingsCategory: () => invoke('ensure_clippings_category'),
+  migrateClippings: () => invoke('migrate_clippings'),
   getSettings: () => invoke('get_settings'),
   updateSettings: (patch) => invoke('update_settings', { patch }),
   pickFolder: () => invoke('pick_folder'),

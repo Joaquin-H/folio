@@ -96,6 +96,9 @@ pub async fn get_sheet(state: Ctx<'_>, id: i64) -> Res<Option<SheetDetail>> {
 #[tauri::command]
 pub async fn get_overview(state: Ctx<'_>) -> Res<Overview> {
     let db = &state.db;
+    let notes_dir = crate::notes_dir();
+    let clippings_category_id = db.clippings_category_id();
+    let untagged_clippings_count = db.untagged_clippings(notes_dir.as_deref()).map(|v| v.len()).unwrap_or(0);
     Ok(Overview {
         counts: db.counts().map_err(e)?,
         categories: db.categories().map_err(e)?,
@@ -106,8 +109,23 @@ pub async fn get_overview(state: Ctx<'_>) -> Res<Overview> {
             last_scan_files: db.get_setting("last_scan_files").and_then(|v| v.parse().ok()),
         },
         jev: jev_status(&state),
-        notes_dir: crate::notes_dir().map(|dir| dir.to_string_lossy().to_string()).unwrap_or_default(),
+        notes_dir: notes_dir.map(|dir| dir.to_string_lossy().to_string()).unwrap_or_default(),
+        clippings_category_id,
+        untagged_clippings_count,
     })
+}
+
+#[tauri::command]
+pub async fn ensure_clippings_category(state: Ctx<'_>) -> Res<i64> {
+    state.db.ensure_clippings_category().map_err(e)
+}
+
+#[tauri::command]
+pub async fn migrate_clippings(app: AppHandle, state: Ctx<'_>) -> Res<usize> {
+    let notes_dir = crate::notes_dir();
+    let count = state.db.migrate_clippings(notes_dir.as_deref()).map_err(e)?;
+    notify_changed(&app);
+    Ok(count)
 }
 
 #[tauri::command]

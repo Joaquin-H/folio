@@ -144,6 +144,8 @@ pub struct Overview {
     pub jev: JevStatus,
     /// Carpeta donde Book guarda, como archivos de texto, las hojas que se escriben en él.
     pub notes_dir: String,
+    pub clippings_category_id: Option<i64>,
+    pub untagged_clippings_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
