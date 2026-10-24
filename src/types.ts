@@ -2,6 +2,7 @@ export type Source = 'file' | 'notepad' | 'sticky' | 'capture';
 
 export type View =
   | { kind: 'all' }
+  | { kind: 'today' }
   | { kind: 'uncategorized' }
   | { kind: 'secret' }
   | { kind: 'hidden' }
@@ -62,6 +63,7 @@ export interface Category {
 
 export interface Counts {
   all: number;
+  today: number;
   uncategorized: number;
   secret: number;
   hidden: number;

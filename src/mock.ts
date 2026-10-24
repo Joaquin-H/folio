@@ -297,18 +297,26 @@ if (typeof window !== 'undefined') {
   (window as unknown as { simulateSecretKeyLoss?: typeof simulateSecretKeyLoss }).simulateSecretKeyLoss = simulateSecretKeyLoss;
 }
 
+const isToday = (ts: number) => {
+  const d = new Date(ts);
+  const today = new Date();
+  return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+};
+
 function matches(sheet: MockSheet, filter: ListFilter): boolean {
   const visible = !sheet.secret && !sheet.hidden;
   const inView =
-    filter.view === 'secret'
-      ? sheet.secret && !sheet.hidden
-      : filter.view === 'hidden'
-        ? sheet.hidden
-        : filter.view === 'uncategorized'
-          ? visible && sheet.categoryId === null
-          : filter.view === 'category'
-            ? visible && sheet.categoryId === filter.categoryId
-            : visible;
+    filter.view === 'today'
+      ? visible && isToday(sheet.modifiedAt)
+      : filter.view === 'secret'
+        ? sheet.secret && !sheet.hidden
+        : filter.view === 'hidden'
+          ? sheet.hidden
+          : filter.view === 'uncategorized'
+            ? visible && sheet.categoryId === null
+            : filter.view === 'category'
+              ? visible && sheet.categoryId === filter.categoryId
+              : visible;
   if (!inView) return false;
   const query = filter.query?.trim().toLowerCase();
   if (!query) return true;
@@ -428,6 +436,7 @@ export const mockApi: Api = {
     return later({
       counts: {
         all: visible.length,
+        today: visible.filter((s) => isToday(s.modifiedAt)).length,
         uncategorized: visible.filter((s) => s.categoryId === null).length,
         secret: sheets.filter((s) => s.secret && !s.hidden).length,
         hidden: sheets.filter((s) => s.hidden).length,
