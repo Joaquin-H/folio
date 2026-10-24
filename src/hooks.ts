@@ -24,6 +24,7 @@ const DEFAULT_PREFS: Prefs = {
   cover: null,
   coverStyle: 'plain',
   tabs: true,
+  borderless: false,
   spread: 'double',
   size: 'standard',
   height: PRESET_HEIGHT.standard,
@@ -48,6 +49,7 @@ export function loadPrefs(): Prefs {
           ? saved.coverStyle
           : 'plain',
       tabs: saved.tabs !== false,
+      borderless: saved.borderless === true,
       spread: saved.spread === 'single' ? 'single' : 'double',
       size:
         saved.size === 'pocket' || saved.size === 'full' || (saved.size === 'custom' && height !== null)
@@ -78,6 +80,7 @@ export function applyPrefs(prefs: Prefs) {
   const dark = prefs.theme === 'dark' || (prefs.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   root.dataset.theme = dark ? 'dark' : 'light';
   root.dataset.text = prefs.textSize;
+  root.dataset.borderless = prefs.borderless ? 'true' : 'false';
   // Alto de renglón y cuerpo de la letra: los comparten las hojas, la hoja suelta y las versiones.
   Object.entries(textVars(prefs.textSize)).forEach(([name, value]) => root.style.setProperty(name, value));
   setSoundsEnabled(prefs.sounds);

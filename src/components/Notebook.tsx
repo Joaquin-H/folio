@@ -834,9 +834,9 @@ function OpenSheet(props: {
                   visibility: page === 0 ? 'visible' : 'hidden',
                 }}
               >
-                <div className="page-date">
-                  <span>{relative ? `${heading.title}, ${heading.subtitle}` : `${heading.title} ${heading.subtitle}`}</span>
-                  <time dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
+                <div className="page-date" data-tauri-drag-region>
+                  <span data-tauri-drag-region>{relative ? `${heading.title}, ${heading.subtitle}` : `${heading.title} ${heading.subtitle}`}</span>
+                  <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
                 </div>
                 {writing && writing.title !== null ? (
                   <label className="page-title editable" title={t('Cambiar el título de la hoja')}>

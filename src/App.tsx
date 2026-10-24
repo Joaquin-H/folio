@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { BookOpen, Lock, Power, Settings2, Trash2 } from 'lucide-react';
+import { BookOpen, Lock, Minus, Power, Settings2, Trash2, X } from 'lucide-react';
 import { api, isTauri, type Spot } from './api';
 import { Finder } from './components/Finder';
 import { Notebook, type FilterChip, type NotebookActions, type NotebookTab } from './components/Notebook';
@@ -500,7 +500,32 @@ export function App() {
   const sizingChanged = sizing !== null && (sizing.dx !== 0 || sizing.dy !== 0 || sizing.height !== book.height);
 
   return (
-    <div className={`app${isMac ? ' mac' : ''}${resizing ? ' resizing' : ''}${sizing ? ' sizing' : ''}`}>
+    <div
+      className={`app${isMac ? ' mac' : ''}${resizing ? ' resizing' : ''}${sizing ? ' sizing' : ''}${prefs.borderless ? ' borderless' : ''}`}
+      data-tauri-drag-region
+    >
+      {prefs.borderless && (
+        <div className="borderless-window-controls" data-tauri-drag-region="false">
+          <button
+            type="button"
+            className="borderless-btn minimize"
+            onClick={() => api.window.minimize()}
+            aria-label={t('Minimizar')}
+            title={t('Minimizar')}
+          >
+            <Minus size={13} />
+          </button>
+          <button
+            type="button"
+            className="borderless-btn close"
+            onClick={() => api.window.hide()}
+            aria-label={t('Cerrar la ventana')}
+            title={t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
       <Notebook
         filter={filter}
         revision={revision}
