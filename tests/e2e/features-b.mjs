@@ -159,15 +159,37 @@ test('feature 7: cuaderno sin marco toggle en personalización activa controles 
 
 // ---- Feature 8: Buscador de Opciones ----
 
-test('feature 8: buscador de ajustes encuentra sin marco y muestra estado sin resultados', async (page) => {
-  await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'double' } });
+test('feature 8: buscador de ajustes encuentra sin marco, Jev (Integraciones+Clasificador), bilingüe es/en, tolerancia typo y estilos sin corte', async (page) => {
+  await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'double', lang: 'es' } });
 
   // 1. Abrir Ajustes con Ctrl + ,
   await ctrlComma(page);
   await page.until(async () => (await page.ask('count', '.settings-panel')) > 0, 'no se abrió Ajustes');
 
-  // 2. Escribir "sin marco" en el buscador de ajustes
   const searchInput = '.settings-search input';
+  const clearSearch = async () => {
+    await page.evaluate(`(() => {
+      const inp = document.querySelector('.settings-search input');
+      if (inp) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, '');
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    })()`);
+    await page.until(async () => (await page.ask('count', '.settings-search-results')) === 0 && (await page.ask('count', '.settings-no-results')) === 0, 'no se limpió la búsqueda');
+  };
+  const setSearch = async (q) => {
+    await page.evaluate(`(() => {
+      const inp = document.querySelector('.settings-search input');
+      if (inp) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, ${JSON.stringify(q)});
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    })()`);
+  };
+
+  // 2. Escribir "sin marco" en el buscador de ajustes
   await page.clickOn(searchInput);
   await page.type('sin marco');
 
@@ -175,16 +197,98 @@ test('feature 8: buscador de ajustes encuentra sin marco y muestra estado sin re
   const labels = await page.ask('labels', '.settings-search-item-label');
   check(labels.some((l) => l.includes('Cuaderno sin marco')), `se esperaba Cuaderno sin marco en ${labels.join(' | ')}`);
 
-  // Verificar resaltado
+  // Verificar resaltado sin padding ni margen que separe letras, y que los resultados no se salgan del borde
   const highlights = await page.ask('labels', '.settings-search-row mark');
   check(highlights.length > 0, 'debe haber términos resaltados con mark');
+  const markMetrics = await page.evaluate(`(() => {
+    const m = document.querySelector('.settings-search-row mark');
+    if (!m) return null;
+    const cs = getComputedStyle(m);
+    return { padL: parseFloat(cs.paddingLeft), padR: parseFloat(cs.paddingRight), marL: parseFloat(cs.marginLeft), marR: parseFloat(cs.marginRight) };
+  })()`);
+  equal(markMetrics.padL, 0, 'mark no debe tener padding-left');
+  equal(markMetrics.padR, 0, 'mark no debe tener padding-right');
+  equal(markMetrics.marL, 0, 'mark no debe tener margin-left');
+  equal(markMetrics.marR, 0, 'mark no debe tener margin-right');
 
-  // Clic en el resultado para abrir la sección Personalización
+  // Verificar que ninguna fila de resultado se salga del contenedor (.settings-body)
+  const overflowCheck = await page.evaluate(`(() => {
+    const body = document.querySelector('.settings-body')?.getBoundingClientRect();
+    const rows = [...document.querySelectorAll('.settings-search-row')];
+    return rows.every((r) => {
+      const b = r.getBoundingClientRect();
+      return b.right <= body.right + 1 && b.left >= body.left - 1;
+    });
+  })()`);
+  check(overflowCheck, 'las filas de resultados no deben salirse del borde del contenedor');
+
+  // 3. Buscar "sis" y verificar que en "sistema" el <mark> no separa letras
+  await setSearch('sis');
+  await page.until(async () => (await page.ask('count', '.settings-search-row mark')) > 0, 'no resaltó sis');
+  const sisText = await page.evaluate(`(() => {
+    const smalls = [...document.querySelectorAll('.settings-search-row small')];
+    const target = smalls.find((s) => s.textContent.includes('sistema'));
+    return target ? target.textContent : '';
+  })()`);
+  check(sisText.includes('sistema'), `el texto no debe separar letras en sistema: ${sisText}`);
+
+  // 4. BUG CONFIRMADO: buscar "Jev" encuentra tanto Clasificador como Integraciones
+  await setSearch('Jev');
+  await page.until(async () => (await page.ask('count', '.settings-search-results .group')) >= 2, 'buscar Jev debe encontrar Clasificador e Integraciones');
+  const jevGroups = await page.ask('labels', '.settings-search-results .group h3');
+  check(jevGroups.some((g) => g.includes('Clasificador')), `Jev debe mostrar sección Clasificador: ${jevGroups.join(', ')}`);
+  check(jevGroups.some((g) => g.includes('Integraciones')), `Jev debe mostrar sección Integraciones: ${jevGroups.join(', ')}`);
+
+  // 5. Búsqueda bilingüe con UI en español: "theme", "border", "language", "integrations"
+  for (const [enQuery, expectedEs] of [
+    ['theme', 'Tema'],
+    ['border', 'Cuaderno sin marco'],
+    ['language', 'Idioma'],
+    ['integrations', 'Integraciones'],
+  ]) {
+    await setSearch(enQuery);
+    await page.until(async () => (await page.ask('count', '.settings-search-row')) > 0, `no encontró resultados para "${enQuery}" en español`);
+    const foundLabels = await page.ask('labels', '.settings-search-item-label, .settings-search-results .group h3');
+    check(foundLabels.some((l) => l.includes(expectedEs)), `buscar "${enQuery}" en UI es debe encontrar "${expectedEs}" (obtenido: ${foundLabels.join(' | ')})`);
+  }
+
+  // 6. Tolerancia a acentos/mayúsculas, prefijo de palabra y fuzzy 1 typo
+  await setSearch('PERSONALIZACION'); // sin tilde y mayúsculas
+  await page.until(async () => (await page.ask('count', '.settings-search-row')) > 0, 'debe encontrar PERSONALIZACION sin tilde');
+  await setSearch(' catgorias '); // 1 typo (falta la e)
+  await page.until(async () => (await page.ask('count', '.settings-search-row')) > 0, 'debe encontrar con 1 typo "catgorias"');
+  const typoGroups = await page.ask('labels', '.settings-search-results .group h3');
+  check(typoGroups.some((g) => g.includes('Categorías')), `fuzzy 1 typo "catgorias" debe encontrar Categorías: ${typoGroups.join(', ')}`);
+
+  // 7. Probar con la UI en inglés (lang: 'en')
+  await clearSearch();
+  await page.evaluate(`import('/src/i18n/index.ts').then(({ setLanguage }) => setLanguage('en'))`);
+  await sleep(150);
+
+  for (const [qEn, expectedEn] of [
+    ['Jev', 'Integrations'],
+    ['tema', 'Theme'], // término en español con UI en inglés
+    ['shortcuts', 'Shortcuts'],
+    ['integratons', 'Integrations'], // 1 typo en inglés
+  ]) {
+    await setSearch(qEn);
+    await page.until(async () => (await page.ask('count', '.settings-search-row')) > 0, `no encontró resultados para "${qEn}" en inglés`);
+    const foundEn = await page.ask('labels', '.settings-search-item-label, .settings-search-results .group h3');
+    check(foundEn.some((l) => l.includes(expectedEn)), `buscar "${qEn}" en UI en debe encontrar "${expectedEn}" (obtenido: ${foundEn.join(' | ')})`);
+  }
+
+  // Volver a español
+  await page.evaluate(`import('/src/i18n/index.ts').then(({ setLanguage }) => setLanguage('es'))`);
+  await sleep(150);
+
+  // Clic en el resultado para abrir una sección
+  await setSearch('sin marco');
+  await page.until(async () => (await page.ask('count', '.settings-search-row')) > 0, 'no encontró sin marco');
   await page.clickOn('.settings-search-row .button', 'Abrir');
   await page.until(async () => (await page.ask('count', '.settings-search-results')) === 0, 'la búsqueda no se cerró');
   equal(await page.evaluate("document.querySelector('#settings-tab-look')?.getAttribute('aria-selected')"), 'true', 'no cambió a Personalización');
 
-  // 3. Escribir un término que no existe
+  // 8. Escribir un término que no existe
   await page.clickOn(searchInput);
   await page.type('sin_resultados_prueba_xyz');
 
@@ -193,7 +297,7 @@ test('feature 8: buscador de ajustes encuentra sin marco y muestra estado sin re
   const hintText = await page.ask('label', '.settings-no-results p');
   check(hintText.includes('sin_resultados_prueba_xyz'), `el mensaje debe contener el término buscado: ${hintText}`);
 
-  // 4. Probar botón "Limpiar búsqueda"
+  // 9. Probar botón "Limpiar búsqueda"
   await page.clickOn('.settings-no-results button', 'Limpiar búsqueda');
   await page.until(async () => (await page.ask('count', '.settings-no-results')) === 0, 'el estado sin resultados no desapareció');
   equal(await page.evaluate(`document.querySelector(${JSON.stringify(searchInput)}).value`), '', 'el input debe quedar vacío');

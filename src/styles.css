@@ -1737,8 +1737,9 @@ input:not([type='color']):not([type='search']):focus {
 mark.settings-search-highlight {
   background: var(--accent-soft);
   color: var(--accent);
-  padding: 1px 3px;
-  border-radius: 3px;
+  padding: 0;
+  margin: 0;
+  border-radius: 2px;
   font-weight: 600;
 }
 
@@ -1746,12 +1747,26 @@ mark.settings-search-highlight {
   display: flex;
   flex-direction: column;
   gap: 22px;
+  min-width: 0;
 }
 
 .settings-search-row {
   cursor: pointer;
   user-select: none;
   transition: background 0.12s ease;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.settings-search-row .row-text {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.settings-search-row .row-control {
+  flex-shrink: 0;
 }
 
 .settings-search-row:hover {
@@ -1766,6 +1781,8 @@ mark.settings-search-highlight {
 .settings-search-item-label {
   font-weight: 550;
   color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .settings-search-item-group {
