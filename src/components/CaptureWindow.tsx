@@ -565,7 +565,7 @@ export function CaptureWindow() {
             </button>
             <button
               type="button"
-              className="icon-button icon-btn small capture-collapse-btn"
+              className="icon-button icon-btn small capture-collapse-btn dock-collapse"
               onClick={() => void collapse()}
               aria-label={t('Colapsar hoja')}
               title={t('Colapsar en el dock')}
