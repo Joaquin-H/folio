@@ -141,6 +141,8 @@ export const notebook: Record<string, string> = {
   'No se pudo guardar la imagen en esta PC.': 'Couldn’t save the image on this PC.',
 
   // App.tsx
+  'Sin hojas hoy': 'No sheets today',
+  'Las hojas que crees o edites hoy aparecen acá.': 'Sheets you create or edit today appear here.',
   'Escribí en el Bloc de notas o guardá un .txt o .md: va a aparecer acá solo.':
     'Write in Notepad or save a .txt or .md: it will appear here on its own.',
   'Todo tiene categoría': 'Everything has a category',

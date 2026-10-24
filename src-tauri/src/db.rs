@@ -350,6 +350,7 @@ fn escape_like(input: &str) -> String {
 
 fn view_conditions(filter: &ListFilter, conds: &mut Vec<String>, args: &mut Vec<Box<dyn ToSql>>) {
     match filter.view.as_str() {
+        "today" => conds.push("s.secret = 0 AND s.hidden = 0 AND (strftime('%Y-%m-%d', s.modified_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') OR strftime('%Y-%m-%d', s.created_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime'))".into()),
         "secret" => conds.push("s.secret = 1 AND s.hidden = 0".into()),
         "hidden" => conds.push("s.hidden = 1".into()),
         "uncategorized" => {
@@ -1547,6 +1548,7 @@ impl Db {
         self.lock().query_row(
             "SELECT \
                sum(secret = 0 AND hidden = 0), \
+               sum(secret = 0 AND hidden = 0 AND (strftime('%Y-%m-%d', modified_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') OR strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime'))), \
                sum(secret = 0 AND hidden = 0 AND category_id IS NULL), \
                sum(secret = 1 AND hidden = 0), \
                sum(hidden = 1) \
@@ -1555,9 +1557,10 @@ impl Db {
             |r| {
                 Ok(Counts {
                     all: r.get::<_, Option<i64>>(0)?.unwrap_or(0),
-                    uncategorized: r.get::<_, Option<i64>>(1)?.unwrap_or(0),
-                    secret: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
-                    hidden: r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                    today: r.get::<_, Option<i64>>(1)?.unwrap_or(0),
+                    uncategorized: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    secret: r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                    hidden: r.get::<_, Option<i64>>(4)?.unwrap_or(0),
                 })
             },
         )
@@ -2955,5 +2958,51 @@ mod tests {
         // Si se vuelve a correr, ya no hay nada que migrar
         let migrated_again = db.migrate_clippings(None).unwrap();
         assert_eq!(migrated_again, 0);
+    }
+
+    #[test]
+    fn cuenta_hojas_de_hoy_y_filtra_en_vista_today() {
+        let db = db();
+        let now = now_ms();
+        // Una hoja modificada hoy
+        let mut sheet_today = incoming("file", "/notas/hoy.txt", "texto de hoy");
+        sheet_today.created_at = now;
+        sheet_today.modified_at = now;
+        db.upsert_sheet(&sheet_today, &session()).unwrap();
+
+        // Una hoja vieja (hace 3 días)
+        let mut sheet_old = incoming("file", "/notas/vieja.txt", "texto viejo");
+        sheet_old.created_at = now - 3 * 86_400_000;
+        sheet_old.modified_at = now - 3 * 86_400_000;
+        db.upsert_sheet(&sheet_old, &session()).unwrap();
+
+        // Una hoja secreta de hoy: no cuenta ni aparece en today
+        let mut sheet_secret = incoming("file", "/notas/secreto.txt", "clave secreta");
+        sheet_secret.created_at = now;
+        sheet_secret.modified_at = now;
+        db.upsert_sheet(&sheet_secret, &session()).unwrap();
+        let secret_id = db.sheet_id("file", "/notas/secreto.txt").unwrap();
+        db.set_sheet_secret(secret_id, true).unwrap();
+
+        // Counts
+        let counts = db.counts().unwrap();
+        assert_eq!(counts.today, 1);
+        assert_eq!(counts.all, 2);
+
+        // List view today
+        let sheets = db
+            .list_sheets(&ListFilter {
+                view: "today".into(),
+                category_id: None,
+                query: None,
+                before_ts: None,
+                before_id: None,
+                until: None,
+                limit: Some(10),
+            })
+            .unwrap();
+
+        assert_eq!(sheets.len(), 1);
+        assert_eq!(sheets[0].title, "hoy.txt");
     }
 }

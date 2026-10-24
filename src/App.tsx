@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { BookOpen, Lock, Power, Settings2, Trash2 } from 'lucide-react';
+import { BookOpen, Lock, Power, Settings2, Sun, Trash2 } from 'lucide-react';
 import { api, isTauri, type Spot } from './api';
 import { Finder } from './components/Finder';
 import { Notebook, type FilterChip, type NotebookActions, type NotebookTab } from './components/Notebook';
 import { SettingsSheet } from './components/Settings';
 import { Tutorial } from './components/Tutorial';
 import { Presence, type MenuItem } from './components/ui';
-import { dayHeading, plural, readableOn } from './format';
+import { dayHeading, dayKey, plural, readableOn } from './format';
 import { useDebounced, usePrefs } from './hooks';
 import { mark, useT } from './i18n';
 import {
@@ -30,6 +30,7 @@ const isMac = /Mac/i.test(navigator.userAgent);
 
 const EMPTY: Record<View['kind'], { title: string; hint: string }> = {
   all: { title: mark('Todavía no hay hojas'), hint: mark('Escribí en el Bloc de notas o guardá un .txt o .md: va a aparecer acá solo.') },
+  today: { title: mark('Sin hojas hoy'), hint: mark('Las hojas que crees o edites hoy aparecen acá.') },
   uncategorized: { title: mark('Todo tiene categoría'), hint: mark('Las hojas sin categoría aparecen acá.') },
   secret: { title: mark('El secret-book está vacío'), hint: mark('Las hojas marcadas como sensibles se guardan acá, fuera del cuaderno y de la búsqueda.') },
   hidden: { title: mark('La papelera está vacía'), hint: mark('Lo que mandes a la papelera deja el cuaderno, pero podés recuperarlo desde acá.') },
@@ -38,6 +39,7 @@ const EMPTY: Record<View['kind'], { title: string; hint: string }> = {
 
 const VIEW_LABEL: Record<Exclude<View['kind'], 'category'>, string> = {
   all: mark('Todas las hojas'),
+  today: mark('Hoy'),
   uncategorized: mark('Sin categoría'),
   secret: mark('Secret-book'),
   hidden: mark('Papelera'),
@@ -113,6 +115,31 @@ export function App() {
     return () => {
       alive = false;
       stop();
+    };
+  }, []);
+
+  // Cambio de día automático: si cambia la fecha actual (por ejemplo a medianoche o al reanudar la PC),
+  // se refrescan el resumen y el listado de hojas para que «Hoy» refleje el nuevo día.
+  useEffect(() => {
+    let currentDay = dayKey(Date.now());
+    const checkDay = () => {
+      const nowDay = dayKey(Date.now());
+      if (nowDay !== currentDay) {
+        currentDay = nowDay;
+        api
+          .getOverview()
+          .then((next) => setOverview(next))
+          .catch(() => {});
+        setRevision((value) => value + 1);
+      }
+    };
+    const timer = window.setInterval(checkDay, 30_000);
+    window.addEventListener('focus', checkDay);
+    document.addEventListener('visibilitychange', checkDay);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', checkDay);
+      document.removeEventListener('visibilitychange', checkDay);
     };
   }, []);
 
@@ -441,6 +468,7 @@ export function App() {
     const counts = overview?.counts;
     return [
       { key: 'all', view: { kind: 'all' }, label: t('Todas'), count: counts?.all ?? 0, color: 'var(--paper)', ink: 'var(--label)' },
+      { key: 'today', view: { kind: 'today' }, label: t('Hoy'), count: counts?.today ?? 0, color: '#FF9500', ink: '#fff', icon: <Sun size={13} /> },
       ...(overview?.categories ?? []).map<NotebookTab>((c) => ({
         key: `category-${c.id}`,
         view: { kind: 'category', id: c.id },
