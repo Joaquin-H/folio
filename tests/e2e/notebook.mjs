@@ -652,6 +652,23 @@ test('los carteles de arriba no pisan los botones del papel, en ningún tamaño'
       await clear(`${where}, secret-book`);
     }
   }
+
+  // En la vista mínima (390 px de ancho, 480 px de alto), el cartel tampoco debe pisar ningún botón.
+  await page.open({ width: 390, height: 480, prefs: { size: 'custom', height: 480, spread: 'single', markdown: false } });
+  await gotoSheet(page, WRITABLE);
+  await page.key('Enter');
+  await page.until(async () => (await page.state()).writing, 'mínimo: no entró a escribir');
+  await sleep(260);
+  await clear('mínimo, escribiendo');
+  await page.key('Escape');
+  await page.until(async () => !(await page.state()).writing, 'mínimo: Esc no terminó la escritura');
+
+  await page.clickOn('.page-actions button[aria-label="Nueva hoja"]');
+  await page.until(async () => (await page.state()).writing, 'mínimo: no se abrió la hoja nueva');
+  await sleep(260);
+  await clear('mínimo, hoja nueva');
+  await page.key('Escape');
+  await page.settle(300);
 });
 
 // ---- lo que no tiene que cortar la escritura ni mover la vista -----------------------

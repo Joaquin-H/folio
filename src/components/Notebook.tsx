@@ -95,8 +95,6 @@ const TURN_EDGE = { share: 0.12, min: 48, max: 96, gutter: 6 };
 const SWIPE = { distance: 55, slope: 2, follow: 0.15, reach: 6, back: 200 };
 /** Lo que es de un control: ahí un clic o un doble clic no son para la hoja. */
 const CONTROLS = 'button, a, input, label, .menu';
-/** Ancho de los botones de arriba del papel: los dos de la izquierda y los tres de la derecha, con su margen. */
-const BUTTONS = { left: 61, right: 100 };
 /** Al seleccionar arrastrando: espera en el borde antes de pasar de página y de nota. */
 const PAGE_HOLD = 450;
 const NOTE_HOLD = 950;
@@ -248,45 +246,75 @@ function PageButtons(props: {
   actions: NotebookActions;
   onClose: () => void;
   onOpenMap?: () => void;
+  banner?: ReactNode;
 }) {
   const t = useT();
   const showMapButton = Boolean(props.onOpenMap && (props.geometry.perView === 2 || props.geometry.pageWidth >= 420));
-  return (
-    <>
-      <div className="page-controls" style={{ left: props.geometry.padLeft - 7 }} data-tour="controls">
-        <button type="button" className="icon-button" onClick={props.onClose} aria-label={t('Cerrar el cuaderno')} title={t('Cerrar el cuaderno')}>
-          <Book size={15} />
-        </button>
+  const isSingle = props.geometry.perView === 1;
+
+  const controls = (
+    <div className="page-controls" data-tour="controls">
+      <button type="button" className="icon-button" onClick={props.onClose} aria-label={t('Cerrar el cuaderno')} title={t('Cerrar el cuaderno')}>
+        <Book size={15} />
+      </button>
+      <button
+        type="button"
+        className="icon-button"
+        onClick={props.actions.onHide}
+        aria-label={t('Cerrar la ventana')}
+        title={t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')}
+      >
+        <X size={15} />
+      </button>
+    </div>
+  );
+
+  const actions = (
+    <div className="page-actions" data-tour="actions">
+      <button type="button" className="icon-button" onClick={props.actions.onSearch} aria-label={t('Buscar y filtrar')} title={t('Buscar y filtrar')}>
+        <Search size={15} />
+      </button>
+      {showMapButton && (
         <button
           type="button"
           className="icon-button"
-          onClick={props.actions.onHide}
-          aria-label={t('Cerrar la ventana')}
-          title={t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')}
+          onClick={props.onOpenMap}
+          aria-label={t('Mapa del cuaderno (Ctrl + M)')}
+          title={t('Mapa del cuaderno (Ctrl + M)')}
         >
-          <X size={15} />
+          <Compass size={15} />
         </button>
+      )}
+      <button type="button" className="icon-button" onClick={props.actions.onCompose} aria-label={t('Nueva hoja')} title={t('Nueva hoja')}>
+        <SquarePen size={15} />
+      </button>
+      <Menu label={t('Menú')} className="icon-button" items={props.menu} trigger={<Ellipsis size={17} />} />
+    </div>
+  );
+
+  if (isSingle) {
+    return (
+      <div className="page-bar single" style={{ left: props.geometry.padLeft - 7, right: 8 }}>
+        {controls}
+        {props.banner}
+        {actions}
       </div>
-      <div className="page-actions" data-tour="actions">
-        <button type="button" className="icon-button" onClick={props.actions.onSearch} aria-label={t('Buscar y filtrar')} title={t('Buscar y filtrar')}>
-          <Search size={15} />
-        </button>
-        {showMapButton && (
-          <button
-            type="button"
-            className="icon-button"
-            onClick={props.onOpenMap}
-            aria-label={t('Mapa del cuaderno (Ctrl + M)')}
-            title={t('Mapa del cuaderno (Ctrl + M)')}
-          >
-            <Compass size={15} />
-          </button>
-        )}
-        <button type="button" className="icon-button" onClick={props.actions.onCompose} aria-label={t('Nueva hoja')} title={t('Nueva hoja')}>
-          <SquarePen size={15} />
-        </button>
-        <Menu label={t('Menú')} className="icon-button" items={props.menu} trigger={<Ellipsis size={17} />} />
+    );
+  }
+
+  return (
+    <>
+      <div
+        className="page-bar left"
+        style={{
+          left: props.geometry.padLeft - 7,
+          width: props.geometry.pageWidth - (props.geometry.padLeft - 7) - 8,
+        }}
+      >
+        {controls}
+        {props.banner}
       </div>
+      {actions}
     </>
   );
 }
@@ -804,13 +832,111 @@ function OpenSheet(props: {
   // Dentro de la nota, las flechas del modo escritura pasan de página sin salir de ella.
   const canTurnBack = page > 0;
   const canTurnOn = page + g.perView < pageCount;
-  // El cartel de arriba va centrado en el hueco que dejan los botones del papel. Con un
-  // cuaderno chico ese hueco es angosto: el cartel dice lo mismo con menos palabras.
-  const bandLeft = g.padLeft - 7 + BUTTONS.left + 8;
-  const room = g.pageWidth - bandLeft - (g.perView === 1 ? BUTTONS.right + 8 : 0);
-  const cartel = { left: bandLeft + room / 2 };
-  const snug = room < 340;
-  const tight = room < 250;
+  // Con un cuaderno chico el espacio para el cartel es angosto: el cartel dice lo mismo con menos palabras.
+  const bandLeft = g.padLeft - 7 + 61 + 8;
+  const availableRoom = g.pageWidth - bandLeft - (g.perView === 1 ? 100 + 8 : 0);
+  const snug = availableRoom < 340;
+  const tight = availableRoom < 250;
+  const narrow = availableRoom < 170;
+  const ultraNarrow = availableRoom < 110;
+
+  const banner =
+    writing && writing.status !== 'conflict' ? (
+      <div
+        className={`page-mode edit-banner ${writing.isNew ? 'new' : 'write'}`}
+        title={writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
+        aria-label={writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
+      >
+        {writing.isNew ? <SquarePen size={12} /> : <PenLine size={12} />}
+        <span className={narrow ? 'banner-text sr-only' : 'banner-text'}>
+          {writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
+        </span>
+        {markdown && (
+          <button
+            type="button"
+            className={`banner-tool preview-btn${livePreview ? ' active' : ''}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={toggleLivePreview}
+            aria-label={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
+            title={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
+          >
+            {livePreview ? <EyeOff size={13} /> : <Eye size={13} />}
+          </button>
+        )}
+        <button
+          type="button"
+          className="banner-tool dict-btn"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            if (livePreview) setLivePreview(false);
+            editor.current?.focus();
+            void api.startDictation().catch(() => {});
+          }}
+          aria-label={dictationLabel}
+          title={dictationLabel}
+        >
+          <Mic size={13} />
+        </button>
+        {/* El atajo va escrito en el botón: si no se ve, no se descubre. */}
+        <button
+          type="button"
+          onClick={() => void writer.finish()}
+          aria-label={t('Guardar y terminar de escribir')}
+          title={
+            finishHint && saveHint
+              ? t('Guardar y terminar de escribir ({finish}). Con {save} se guarda y se sigue escribiendo.', { finish: describe('finish'), save: saveHint })
+              : finishHint
+                ? t('Guardar y terminar de escribir ({finish}).', { finish: describe('finish') })
+                : saveHint
+                  ? t('Guardar y terminar de escribir. Con {save} se guarda y se sigue escribiendo.', { save: saveHint })
+                  : t('Guardar y terminar de escribir.')
+          }
+        >
+          {ultraNarrow ? <Check size={12} /> : t('Listo')}
+          {!tight && finishHint && <kbd>{finishHint}</kbd>}
+        </button>
+      </div>
+    ) : mode && !writing ? (
+      <div className={`page-mode ${mode}`}>
+        {mode === 'trash' ? <Trash2 size={12} /> : <Lock size={12} />}
+        <span className={narrow ? 'banner-text sr-only' : 'banner-text'}>
+          {mode === 'trash' ? (tight ? t('Papelera') : t('En la papelera')) : t('Secret-book')}
+        </span>
+        {mode === 'trash' && (
+          <button type="button" onClick={restore} aria-label={t('Recuperar')} title={t('Sacar esta hoja de la papelera')}>
+            {tight ? <Undo2 size={12} /> : t('Recuperar')}
+          </button>
+        )}
+        {props.onBack && (
+          <button
+            type="button"
+            onClick={props.onBack}
+            aria-label={t('Volver al cuaderno')}
+            title={hintOf('back') ? t('Volver a todas las hojas ({hint})', { hint: hintOf('back') }) : t('Volver a todas las hojas')}
+          >
+            <ArrowLeft size={12} />
+            {tight ? null : snug && mode === 'trash' ? t('Volver') : t('Volver al cuaderno')}
+          </button>
+        )}
+      </div>
+    ) : writing?.status === 'conflict' ? (
+      <div className="page-mode conflict" role="alert">
+        <TriangleAlert size={12} />
+        <span className={narrow ? 'banner-text sr-only' : 'banner-text'}>
+          {snug ? t('Cambió afuera') : t('El archivo cambió fuera de Folio')}
+        </span>
+        <button type="button" onClick={() => writer.resolve('mine')} title={t('Guardar lo que escribiste: lo de afuera queda como versión anterior')}>
+          {tight ? t('Lo mío') : t('Guardar lo mío')}
+        </button>
+        <button
+          type="button"
+          onClick={() => writer.resolve('theirs')}
+          title={t('Dejar el archivo como quedó afuera: lo que escribiste pasa a una hoja nueva, no se pierde')}
+        >
+          {tight ? t('El de afuera') : t('Quedarme con el de afuera')}
+        </button>
+      </div>
+    ) : null;
 
   return (
     <>
@@ -924,92 +1050,6 @@ function OpenSheet(props: {
                 </div>
                 {error && <p className="page-error">{error}</p>}
               </header>
-            )}
-            {index === 0 && writing && writing.status !== 'conflict' && (
-              <div className={`page-mode edit-banner ${writing.isNew ? 'new' : 'write'}`} style={cartel}>
-                {writing.isNew ? <SquarePen size={12} /> : <PenLine size={12} />}
-                {writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
-                {markdown && (
-                  <button
-                    type="button"
-                    className={`banner-tool preview-btn${livePreview ? ' active' : ''}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={toggleLivePreview}
-                    aria-label={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
-                    title={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
-                  >
-                    {livePreview ? <EyeOff size={13} /> : <Eye size={13} />}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="banner-tool dict-btn"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    if (livePreview) setLivePreview(false);
-                    editor.current?.focus();
-                    void api.startDictation().catch(() => {});
-                  }}
-                  aria-label={dictationLabel}
-                  title={dictationLabel}
-                >
-                  <Mic size={13} />
-                </button>
-                {/* El atajo va escrito en el botón: si no se ve, no se descubre. */}
-                <button
-                  type="button"
-                  onClick={() => void writer.finish()}
-                  title={
-                    finishHint && saveHint
-                      ? t('Guardar y terminar de escribir ({finish}). Con {save} se guarda y se sigue escribiendo.', { finish: describe('finish'), save: saveHint })
-                      : finishHint
-                        ? t('Guardar y terminar de escribir ({finish}).', { finish: describe('finish') })
-                        : saveHint
-                          ? t('Guardar y terminar de escribir. Con {save} se guarda y se sigue escribiendo.', { save: saveHint })
-                          : t('Guardar y terminar de escribir.')
-                  }
-                >
-                  {t('Listo')}{!tight && finishHint && <kbd>{finishHint}</kbd>}
-                </button>
-              </div>
-            )}
-            {index === 0 && mode && !writing && (
-              <div className={`page-mode ${mode}`} style={cartel}>
-                {mode === 'trash' ? <Trash2 size={12} /> : <Lock size={12} />}
-                {mode === 'trash' ? (tight ? t('Papelera') : t('En la papelera')) : t('Secret-book')}
-                {mode === 'trash' && (
-                  <button type="button" onClick={restore} aria-label={t('Recuperar')} title={t('Sacar esta hoja de la papelera')}>
-                    {tight ? <Undo2 size={12} /> : t('Recuperar')}
-                  </button>
-                )}
-                {props.onBack && (
-                  <button
-                    type="button"
-                    onClick={props.onBack}
-                    aria-label={t('Volver al cuaderno')}
-                    title={hintOf('back') ? t('Volver a todas las hojas ({hint})', { hint: hintOf('back') }) : t('Volver a todas las hojas')}
-                  >
-                    <ArrowLeft size={12} />
-                    {tight ? null : snug && mode === 'trash' ? t('Volver') : t('Volver al cuaderno')}
-                  </button>
-                )}
-              </div>
-            )}
-            {index === 0 && writing?.status === 'conflict' && (
-              <div className="page-mode conflict" role="alert" style={cartel}>
-                <TriangleAlert size={12} />
-                {snug ? t('Cambió afuera') : t('El archivo cambió fuera de Folio')}
-                <button type="button" onClick={() => writer.resolve('mine')} title={t('Guardar lo que escribiste: lo de afuera queda como versión anterior')}>
-                  {tight ? t('Lo mío') : t('Guardar lo mío')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => writer.resolve('theirs')}
-                  title={t('Dejar el archivo como quedó afuera: lo que escribiste pasa a una hoja nueva, no se pierde')}
-                >
-                  {tight ? t('El de afuera') : t('Quedarme con el de afuera')}
-                </button>
-              </div>
             )}
             <Footer
               geometry={g}
@@ -1151,6 +1191,7 @@ function OpenSheet(props: {
           actions={props.actions}
           onClose={props.onClose}
           onOpenMap={props.onOpenMap}
+          banner={banner}
         />
       )}
       <Presence show={showVersions}>
