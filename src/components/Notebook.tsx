@@ -204,8 +204,15 @@ function Tabs(props: { tabs: NotebookTab[]; view: View; onView: (view: View) => 
 }
 
 function Footer(props: { geometry: Geometry; left?: ReactNode; right?: ReactNode }) {
+  const isSingle = props.geometry.perView === 1;
   return (
-    <footer className="page-foot" style={{ left: props.geometry.padLeft, right: PAD_RIGHT }}>
+    <footer
+      className="page-foot"
+      style={{
+        left: isSingle ? props.geometry.padLeft - 7 : props.geometry.padLeft,
+        right: isSingle ? 8 : PAD_RIGHT,
+      }}
+    >
       <span className="page-foot-main">{props.left}</span>
       <span>{props.right}</span>
     </footer>

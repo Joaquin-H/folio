@@ -246,7 +246,7 @@ export function SheetMapModal(props: {
                       key={sheet.id}
                       ref={isCurrent ? activeCardRef : null}
                       type="button"
-                      className={`sheet-map-card${isCurrent ? ' current' : ''}`}
+                      className={`sheet-map-card sheet-card${isCurrent ? ' current' : ''}`}
                       onClick={() => {
                         onSelectSheet(index);
                         onClose();

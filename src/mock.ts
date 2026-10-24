@@ -232,7 +232,48 @@ const seedListeners = new Set<() => void>();
 /** Solo para las pruebas: hace de cuenta que se envió ese texto desde otro programa. */
 export function simulateSend(seed: CaptureSeed) {
   pendingSeed = seed;
-  seedListeners.forEach((fn) => fn());
+  if (seedListeners.size > 0) {
+    seedListeners.forEach((fn) => fn());
+  } else {
+    void mockApi.ensureClippingsCategory().then((catId) => {
+      const entry = [seed.origin, seed.text].filter(Boolean).join('\n');
+      void mockApi.createNote('Recorte capturado', entry, catId);
+    });
+  }
+}
+
+/** Agrega hojas adicionales en el mock para pruebas de rendimiento y escala (>40 hojas). */
+export function seedExtraSheets(count = 60) {
+  for (let i = 1; i <= count; i++) {
+    const title = `Nota adicional ${i}`;
+    const content = `Contenido de prueba para la nota adicional ${i}.\nSegunda línea de la nota.`;
+    const age = 300 + i;
+    const modifiedAt = now - age * HOUR;
+    sheets.push({
+      id: nextId++,
+      source: 'file',
+      title,
+      path: `C:\\Users\\demo\\Documents\\Notas\\${title}.txt`,
+      preview: content.slice(0, 900),
+      length: content.length,
+      size: content.length,
+      modifiedAt,
+      categoryId: i % 2 === 0 ? 1 : null,
+      categorySource: null,
+      categoryConfidence: null,
+      noteScore: 0.9,
+      secret: false,
+      secretSource: null,
+      hidden: false,
+      missing: false,
+      versionCount: 0,
+      pinned: false,
+      content,
+      hash: fakeHash(content),
+      versions: [],
+    });
+  }
+  changed();
 }
 
 const listeners = new Set<() => void>();
@@ -296,6 +337,34 @@ export function seedMockEnglish() {
 
 if (typeof window !== 'undefined') {
   (window as unknown as { simulateSecretKeyLoss?: typeof simulateSecretKeyLoss }).simulateSecretKeyLoss = simulateSecretKeyLoss;
+  (window as unknown as { seedExtraSheets?: typeof seedExtraSheets }).seedExtraSheets = seedExtraSheets;
+  (window as unknown as { simulateSend?: typeof simulateSend }).simulateSend = simulateSend;
+
+  window.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.altKey && (event.key === 'x' || event.key === 'X')) {
+      event.preventDefault();
+      simulateSend({
+        origin: '— 12:00 · Web · «Recorte capturado»',
+        text: 'Texto capturado mediante Ctrl+Alt+X',
+      });
+    }
+  });
+
+  const extraRequested = (() => {
+    try {
+      const session = sessionStorage.getItem('book.mock.extraSheets');
+      if (session) return parseInt(session, 10);
+      if (window.location?.search?.includes('extraSheets=')) {
+        const match = /[?&]extraSheets=(\d+)/.exec(window.location.search);
+        if (match) return parseInt(match[1], 10);
+      }
+    } catch {}
+    return 0;
+  })();
+
+  if (extraRequested > 0) {
+    seedExtraSheets(extraRequested);
+  }
 }
 
 const isToday = (ts: number) => {
@@ -558,10 +627,10 @@ export const mockApi: Api = {
   async ensureClippingsCategory() {
     const existing = categories.find((c) => ['recortes', 'clippings'].includes(c.name.toLowerCase()));
     if (existing) return existing.id;
-    return this.createCategory('Recortes', 'Recortes y capturas rápidas', '#FF9500');
+    return mockApi.createCategory('Recortes', 'Recortes y capturas rápidas', '#FF9500');
   },
   async migrateClippings() {
-    const catId = await this.ensureClippingsCategory();
+    const catId = await mockApi.ensureClippingsCategory();
     let count = 0;
     for (const s of sheets) {
       if (
