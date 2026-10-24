@@ -557,7 +557,7 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   position: absolute;
   right: 0;
   left: 0;
-  padding-bottom: 9px;
+  padding-bottom: 6px;
   background: inherit;
   pointer-events: none;
   transition: opacity 0.09s ease;
@@ -577,11 +577,13 @@ html[data-window='notebook'][data-frame='none'] .tabs,
 
 .page-date {
   display: flex;
-  gap: 12px;
-  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  align-items: center;
   justify-content: space-between;
+  min-height: 20px;
   color: var(--label-2);
-  font-size: 12.5px;
+  font-size: 11.5px;
   cursor: grab;
 }
 
@@ -589,7 +591,18 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   cursor: grabbing;
 }
 
-.page-date span {
+.page-date-main {
+  display: inline-flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-date-main > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -601,15 +614,26 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   font-variant-numeric: tabular-nums;
 }
 
+.page-head.compact .page-date time {
+  display: none;
+}
+
+.page-title-row {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  margin-top: 1px;
+}
+
 .page-title {
   width: fit-content;
   max-width: 100%;
-  margin: 1px 0 0;
+  margin: 0;
   overflow: hidden;
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.018em;
-  line-height: 1.25;
+  line-height: 1.22;
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: text;
@@ -617,19 +641,28 @@ html[data-window='notebook'][data-frame='none'] .tabs,
 }
 
 .page-meta {
-  display: flex;
+  display: inline-flex;
+  flex: 0 1 auto;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 3px;
   align-items: center;
-  margin-top: 5px;
+  justify-content: flex-end;
+  margin-left: auto;
   color: var(--label-2);
-  font-size: 12px;
+  font-size: 11px;
+  opacity: 0.65;
+  transition: opacity 0.16s ease;
+  pointer-events: auto;
 }
 
-
+.page-head:hover .page-meta,
+.page-meta:hover,
+.page-meta:focus-within {
+  opacity: 1;
+}
 
 /* Encabezado centrado de la hoja */
-.page-head.centered-title .page-date {
+.page-head.centered-title .page-title-row {
   justify-content: center;
 }
 
@@ -649,15 +682,52 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   text-align: center;
 }
 
-.page-head.centered-title .page-meta {
-  justify-content: center;
-}
-
 .page-source {
   display: inline-flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
-  margin-right: 2px;
+}
+
+/* Metadatos discretos en el encabezado de la hoja (sin cápsulas pesadas) */
+.page-head .meta-item,
+.page-head .meta-btn,
+.page-head .sheet-chip,
+.page-head .chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 20px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--label-2);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: background-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+}
+
+.page-head .meta-btn:hover,
+.page-head .chip:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.dot.unset-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.25px var(--label-3);
+}
+
+/* En cuaderno chico los metadatos muestran solo ícono con su tooltip */
+.page-head.compact .page-meta .meta-text {
+  display: none;
+}
+
+.page-head.compact .page-meta .meta-item,
+.page-head.compact .page-meta .meta-btn {
+  padding: 0 4px;
 }
 
 .chip {
@@ -690,12 +760,21 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   background: var(--fill);
 }
 
+.page-head .chip.unset {
+  box-shadow: none;
+}
+
 .chip.action-chip {
   background: var(--fill);
   color: var(--accent);
   font-weight: 550;
   cursor: pointer;
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.page-head .chip.action-chip {
+  background: var(--accent-soft);
+  box-shadow: none;
 }
 
 .chip.action-chip:hover {
@@ -713,6 +792,10 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   color: var(--accent);
   font-weight: 550;
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.page-head .chip.pin-btn.active {
+  box-shadow: none;
 }
 
 .chip.pin-btn.active:hover {
@@ -999,11 +1082,20 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   top: 3px;
   z-index: 3;
   display: flex;
-  gap: 1px;
+  align-items: center;
+  gap: 2px;
 }
 
 .page-actions {
   right: 8px;
+}
+
+.page-actions-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--hairline);
+  flex: none;
 }
 
 .page-controls .icon-button,
@@ -1289,12 +1381,49 @@ input:not([type='color']):not([type='search']):focus {
   z-index: 30;
   min-width: 224px;
   max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 42px);
   padding: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 86%, transparent);
   backdrop-filter: saturate(180%) blur(24px);
   box-shadow: var(--shadow-pop);
   animation: pop 0.12s ease-out;
+}
+
+.menu-list.above {
+  top: auto;
+  bottom: calc(100% + 6px);
+  animation-name: pop-up;
+}
+
+.menu-list.above.leaving {
+  animation: pop-out-up 0.11s ease-in forwards;
+}
+
+.menu-list.compact {
+  padding: 3px;
+}
+
+.menu-list.compact .menu-item {
+  height: 21px;
+  font-size: 12px;
+}
+
+.menu-list.compact .menu-row {
+  height: 24px;
+  font-size: 12px;
+}
+
+.menu-list.compact .menu-item.separated,
+.menu-list.compact .menu-row.separated {
+  margin-top: 4px;
+}
+
+.menu-list.compact .menu-item.separated::before,
+.menu-list.compact .menu-row.separated::before {
+  top: -2.5px;
 }
 
 .menu-list.leaving,
