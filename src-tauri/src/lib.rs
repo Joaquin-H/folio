@@ -7,6 +7,7 @@ mod ghost;
 mod integrations;
 mod jev;
 mod llm;
+pub mod mcp;
 mod model;
 mod notepad;
 mod provider;
@@ -625,6 +626,15 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "mcp" || a == "--mcp") {
+        if let Err(err) = mcp::run_stdio_server() {
+            eprintln!("Error en el servidor MCP de Folio: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             open_main_window(app);
@@ -686,6 +696,7 @@ pub fn run() {
             ghost::create();
 
             let handle = app.handle().clone();
+            mcp::spawn_ipc_bridge(&handle, &shared);
             build_tray(&handle)?;
             ensure_autostart(&handle, &shared);
             classifier::spawn(&handle, &shared);

@@ -1081,5 +1081,7 @@ export const mockApi: Api = {
     listeners.add(callback);
     return () => listeners.delete(callback);
   },
+  onOpenMap: () => () => {},
+  onFocusSheet: () => () => {},
   window: { hide() {}, minimize() {}, quit() {}, async fit() {}, async place() {}, async ghost() {}, drag() {}, onClosing: () => () => {} },
 };

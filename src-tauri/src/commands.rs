@@ -280,7 +280,7 @@ pub(crate) fn index_file(db: &Db, path: &Path, content: String) -> Res<i64> {
 }
 
 /// Crea el archivo de una hoja nueva en `dir` y la registra. Devuelve su id y su ruta.
-fn new_note(db: &Db, dir: &Path, title: &str, content: &str) -> Res<(i64, PathBuf)> {
+pub(crate) fn new_note(db: &Db, dir: &Path, title: &str, content: &str) -> Res<(i64, PathBuf)> {
     let _turn = writing();
     let trimmed = title.trim();
     let is_en = db.get_setting("locale").as_deref() == Some("en");
@@ -294,7 +294,7 @@ fn new_note(db: &Db, dir: &Path, title: &str, content: &str) -> Res<(i64, PathBu
     Ok((id, path))
 }
 
-fn detail(shared: &Shared, id: i64) -> Res<SheetDetail> {
+pub(crate) fn detail(shared: &Shared, id: i64) -> Res<SheetDetail> {
     shared.db.get_sheet(id).map_err(e)?.ok_or_else(|| "La hoja ya no existe".to_string())
 }
 
