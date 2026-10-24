@@ -917,7 +917,7 @@ impl Db {
             args.push(Box::new(ts));
             args.push(Box::new(id));
         }
-        let limit = filter.limit.unwrap_or(40).clamp(1, 500);
+        let limit = filter.limit.map(|l| l.max(1));
 
         let sql = if filter.view == "secret" {
             format!(
@@ -925,11 +925,17 @@ impl Db {
                  ORDER BY s.modified_at DESC, s.id DESC",
                 conds.join(" AND ")
             )
-        } else {
+        } else if let Some(limit) = limit {
             args.push(Box::new(limit));
             format!(
                 "SELECT {SUMMARY_COLS} FROM sheets s WHERE {} \
                  ORDER BY s.modified_at DESC, s.id DESC LIMIT ?",
+                conds.join(" AND ")
+            )
+        } else {
+            format!(
+                "SELECT {SUMMARY_COLS} FROM sheets s WHERE {} \
+                 ORDER BY s.modified_at DESC, s.id DESC",
                 conds.join(" AND ")
             )
         };
@@ -967,8 +973,10 @@ impl Db {
                 } else {
                     results.push(summary);
                 }
-                if results.len() >= limit as usize {
-                    break;
+                if let Some(limit) = limit {
+                    if results.len() >= limit as usize {
+                        break;
+                    }
                 }
             }
             Ok(results)

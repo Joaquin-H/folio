@@ -1274,6 +1274,12 @@ export function Notebook(props: {
   const [pos, setPos] = useState({ sheet: 0, page: 0 });
   const [pageCount, setPageCount] = useState(1);
   const [mapOpen, setMapOpen] = useState(false);
+
+  useEffect(() => {
+    if (mapOpen && !done) {
+      void loadAll();
+    }
+  }, [mapOpen, done, loadAll]);
   const [noteFormat, setNoteFormat] = useState<'txt' | 'md'>('txt');
 
   useEffect(() => {

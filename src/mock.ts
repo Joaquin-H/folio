@@ -395,8 +395,9 @@ export const mockApi: Api = {
           s.modifiedAt < filter.beforeTs ||
           (s.modifiedAt === filter.beforeTs && s.id < (filter.beforeId ?? 0)),
       )
-      .sort((a, b) => b.modifiedAt - a.modifiedAt || b.id - a.id)
-      .slice(0, filter.limit ?? 40)
+      .sort((a, b) => b.modifiedAt - a.modifiedAt || b.id - a.id);
+    const limited = filter.limit !== undefined ? rows.slice(0, Math.max(1, filter.limit)) : rows;
+    const summaries = limited
       .map(summary)
       .map((s) => {
         if (s.secret && secretKey === null) {
@@ -404,7 +405,7 @@ export const mockApi: Api = {
         }
         return s;
       });
-    return later(rows);
+    return later(summaries);
   },
   listDays(filter) {
     const counts = new Map<string, number>();

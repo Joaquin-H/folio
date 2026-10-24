@@ -261,27 +261,32 @@ export function useSheets(filter: ListFilter, revision: number) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, done]);
 
+  const loadingAll = useRef(false);
+
   /** Trae todas las hojas que faltan y devuelve la lista completa. */
   const loadAll = useCallback(async () => {
     if (done) return itemsRef.current;
+    if (loadingAll.current) return itemsRef.current;
+    loadingAll.current = true;
     const id = request.current;
-    const all = [...itemsRef.current];
-    for (;;) {
-      const last = all[all.length - 1];
+    try {
+      const last = itemsRef.current[itemsRef.current.length - 1];
       const rows = await api.listSheets({
         ...filter,
         beforeTs: last?.modifiedAt,
         beforeId: last?.id,
-        limit: 500,
       });
-      all.push(...rows);
-      if (rows.length < 500) break;
+      const all = [...itemsRef.current, ...rows];
+      if (id === request.current) {
+        setItems(all);
+        setDone(true);
+      }
+      return all;
+    } catch {
+      return itemsRef.current;
+    } finally {
+      loadingAll.current = false;
     }
-    if (id === request.current) {
-      setItems(all);
-      setDone(true);
-    }
-    return all;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, done]);
 
