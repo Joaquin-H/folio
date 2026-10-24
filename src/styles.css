@@ -882,6 +882,19 @@ html[data-window='notebook'][data-borderless='true'][data-theme='dark'] .book {
   flex-shrink: 0;
 }
 
+.sheet-chip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+}
+
 .sheet-chip .sheet-indicator-accent {
   margin-right: 2px;
 }

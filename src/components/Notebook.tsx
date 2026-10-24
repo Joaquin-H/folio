@@ -1008,7 +1008,7 @@ function OpenSheet(props: {
                   </h2>
                 )}
                 <div className="page-meta">
-                  <span className="chip sheet-chip" title={props.counter}>
+                  <span className="sheet-chip" title={props.counter}>
                     <span className="sheet-indicator-accent" aria-hidden="true" />
                     {props.counter}
                   </span>
@@ -1016,30 +1016,6 @@ function OpenSheet(props: {
                     <Icon size={13} />
                     {isDraft ? t('Hoja nueva') : sourceLabel(sheet)}
                   </span>
-                  {!isDraft && (
-                    <button
-                      type="button"
-                      className={`chip pin-btn${sheet.pinned ? ' active' : ''}`}
-                      onClick={togglePinned}
-                      aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                      title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                    >
-                      {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-                      {sheet.pinned ? t('Fijada') : t('Fijar')}
-                    </button>
-                  )}
-                  {sheet.source === 'notepad' && (
-                    <button
-                      type="button"
-                      className="chip action-chip"
-                      onClick={() => void saveNotepadToFolio()}
-                      title={t('Guardar esta nota en Folio para poder escribirla')}
-                      aria-label={t('Guardar en Folio')}
-                    >
-                      <FolderDown size={12} />
-                      {t('Guardar en Folio')}
-                    </button>
-                  )}
                   <Menu
                     label={t('Cambiar la categoría de esta hoja')}
                     heading={t('Categoría de esta hoja')}
@@ -1057,6 +1033,30 @@ function OpenSheet(props: {
                       )
                     }
                   />
+                  {sheet.source === 'notepad' && (
+                    <button
+                      type="button"
+                      className="chip action-chip"
+                      onClick={() => void saveNotepadToFolio()}
+                      title={t('Guardar esta nota en Folio para poder escribirla')}
+                      aria-label={t('Guardar en Folio')}
+                    >
+                      <FolderDown size={12} />
+                      {t('Guardar en Folio')}
+                    </button>
+                  )}
+                  {!isDraft && (
+                    <button
+                      type="button"
+                      className={`chip pin-btn${sheet.pinned ? ' active' : ''}`}
+                      onClick={togglePinned}
+                      aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                      title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                    >
+                      {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                      {sheet.pinned ? t('Fijada') : t('Fijar')}
+                    </button>
+                  )}
                   {sheet.versionCount > 0 && (
                     <button type="button" className="chip" onClick={() => setShowVersions(true)}>
                       <History size={12} />
