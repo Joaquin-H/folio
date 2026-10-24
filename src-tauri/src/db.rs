@@ -3024,6 +3024,7 @@ mod tests {
                 query: None,
                 before_ts: None,
                 before_id: None,
+                before_pinned: None,
                 until: None,
                 limit: Some(10),
             })
