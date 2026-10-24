@@ -109,6 +109,18 @@ export function Look(props: {
         >
           <Switch label={t('Ver los .md con formato')} checked={prefs.markdown} onChange={(markdown) => onPrefs({ markdown })} />
         </Row>
+        <Row
+          label={t('Ocultar encabezado')}
+          detail={t('Oculta el título, la fecha y los datos de la hoja para dejar más espacio al texto.')}
+        >
+          <Switch label={t('Ocultar encabezado')} checked={prefs.hideHeader} onChange={(hideHeader) => onPrefs({ hideHeader })} />
+        </Row>
+        <Row
+          label={t('Centrar título de la hoja')}
+          detail={t('Ubica el título en el centro de la hoja en lugar de alinearlo a la izquierda.')}
+        >
+          <Switch label={t('Centrar título de la hoja')} checked={prefs.centerTitle} onChange={(centerTitle) => onPrefs({ centerTitle })} />
+        </Row>
       </Group>
 
       <Group title={t('Tapa')}>

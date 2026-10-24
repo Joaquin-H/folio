@@ -26,6 +26,8 @@ export type ShortcutGroup = 'Cuaderno' | 'Escribiendo' | 'Ventana y tamaño' | '
 export type ShortcutId =
   | 'next'
   | 'prev'
+  | 'sheet-next'
+  | 'sheet-prev'
   | 'first'
   | 'last'
   | 'write'
@@ -75,6 +77,8 @@ export const ACTIONS: readonly ShortcutAction[] = [
   // El cuaderno
   { id: 'next', label: mark('Página siguiente'), group: 'Cuaderno', defaults: ['ArrowRight', 'PageDown'], scopes: ['closed', 'reading'], bare: true },
   { id: 'prev', label: mark('Página anterior'), group: 'Cuaderno', defaults: ['ArrowLeft', 'PageUp'], scopes: ['closed', 'reading'], bare: true },
+  { id: 'sheet-next', label: mark('Hoja siguiente'), group: 'Cuaderno', defaults: ['Alt+ArrowRight', 'Ctrl+PageDown'], scopes: ['closed', 'reading'], bare: true },
+  { id: 'sheet-prev', label: mark('Hoja anterior'), group: 'Cuaderno', defaults: ['Alt+ArrowLeft', 'Ctrl+PageUp'], scopes: ['closed', 'reading'], bare: true },
   { id: 'first', label: mark('Primera hoja'), group: 'Cuaderno', defaults: ['Home'], scopes: ['closed', 'reading'], bare: true },
   { id: 'last', label: mark('Última hoja'), group: 'Cuaderno', defaults: ['End'], scopes: ['closed', 'reading'], bare: true },
   { id: 'write', label: mark('Escribir en la hoja'), group: 'Cuaderno', defaults: ['Enter', 'F2'], scopes: ['reading'], bare: true },

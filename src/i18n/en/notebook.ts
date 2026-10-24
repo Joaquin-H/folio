@@ -102,6 +102,10 @@ export const notebook: Record<string, string> = {
   'Texto de {title}': 'Text of {title}',
   'Página anterior ({hint})': 'Previous page ({hint})',
   'Página siguiente ({hint})': 'Next page ({hint})',
+
+
+  'Hoja anterior ({hint})': 'Previous sheet ({hint})',
+  'Hoja siguiente ({hint})': 'Next sheet ({hint})',
   'Hoja {n} de {total}': 'Sheet {n} of {total}',
   'Hoja {n}': 'Sheet {n}',
   'Ir a la primera hoja': 'Go to first sheet',
