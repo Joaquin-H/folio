@@ -341,6 +341,8 @@ pub fn run_scan(app: &AppHandle, shared: &Arc<Shared>) {
         let _ = db.set_setting("last_scan_at", &now_ms().to_string());
         let _ = db.set_setting("last_scan_ms", &started.elapsed().as_millis().to_string());
         let _ = db.set_setting("last_scan_files", &files.to_string());
+        db.checkpoint();
+        db.compact();
     };
     let done = || {
         let _ = app.emit(EVENT_CHANGED, ());
