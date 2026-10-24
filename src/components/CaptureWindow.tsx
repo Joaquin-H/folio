@@ -162,6 +162,14 @@ export function CaptureWindow() {
           const kept = current.replace(/\n+$/, '');
           return kept.trim() ? `${kept}\n\n${entry}` : entry;
         });
+        setCategoryId((prev) => {
+          if (prev === null) {
+            void api.ensureClippingsCategory().then((id) => {
+              setCategoryId((current) => (current === null ? id : current));
+            }).catch(() => {});
+          }
+          return prev;
+        });
         setDiscarding(false);
       });
     };

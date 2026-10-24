@@ -102,7 +102,7 @@ function SettingsPanel(props: {
         ) : tab === 'bans' ? (
           <Bans settings={settings} act={act} />
         ) : tab === 'categories' ? (
-          <Categories categories={overview?.categories ?? []} act={act} />
+          <Categories categories={overview?.categories ?? []} act={act} overview={overview} />
         ) : tab === 'versions' ? (
           <Versions settings={settings} act={act} />
         ) : tab === 'data' ? (

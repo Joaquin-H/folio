@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LoaderCircle, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../../api';
 import { useT } from '../../i18n';
-import type { Category, CategorySuggestion } from '../../types';
+import type { Category, CategorySuggestion, Overview } from '../../types';
 import { ColorPicker } from '../ColorPicker';
 import { Presence } from '../ui';
 import { Group, type Act } from './shared';
@@ -301,10 +301,62 @@ function Suggestions(props: { categories: Category[]; act: Act }) {
   );
 }
 
-/** Las categorías entre las que elige el clasificador: color, nombre, descripción y cuántas hojas tiene cada una. */
-export function Categories(props: { categories: Category[]; act: Act }) {
+function ClippingsMigration(props: { count: number; act: Act }) {
   const t = useT();
-  const { categories, act } = props;
+  const [migrating, setMigrating] = useState(false);
+  const [doneCount, setDoneCount] = useState<number | null>(null);
+
+  const runMigration = async () => {
+    setMigrating(true);
+    try {
+      const migrated = await api.migrateClippings();
+      setDoneCount(migrated);
+      props.act(Promise.resolve());
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  if (doneCount !== null) {
+    return (
+      <div className="row suggest-row">
+        <div className="row-text">
+          <span>{t('Recortes organizados')}</span>
+          <small>{t('Se asignaron {n} recortes a la categoría Recortes.', { n: doneCount })}</small>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="row suggest-row">
+      <div className="row-text">
+        <span>{t('Organizar recortes existentes')}</span>
+        <small>
+          {t('Se encontraron {n} recortes sin categorizar. Podés moverlos automáticamente a la categoría Recortes.', {
+            n: props.count,
+          })}
+        </small>
+      </div>
+      <div className="row-control">
+        <button
+          type="button"
+          className="button suggest-go"
+          disabled={migrating}
+          onClick={() => void runMigration()}
+        >
+          {migrating && <LoaderCircle size={14} className="spin" />}
+          {t('Asignar a Recortes')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Las categorías entre las que elige el clasificador: color, nombre, descripción y cuántas hojas tiene cada una. */
+export function Categories(props: { categories: Category[]; act: Act; overview?: Overview | null }) {
+  const t = useT();
+  const { categories, act, overview } = props;
   const [newCategory, setNewCategory] = useState('');
   // Sin elegir, la categoría nueva toma el siguiente color de la paleta.
   const [chosen, setChosen] = useState<string | null>(null);
@@ -315,6 +367,9 @@ export function Categories(props: { categories: Category[]; act: Act }) {
       title={t('Categorías')}
       footer={t('Tocá el círculo de color de una categoría para cambiarlo: se aplica al elegirlo. La IA que clasifica elige entre estas categorías; la descripción le indica qué va en cada una. Eliminar una categoría pide confirmación y deja sus hojas sin categoría: las hojas no se borran.')}
     >
+      {overview?.untaggedClippingsCount ? (
+        <ClippingsMigration count={overview.untaggedClippingsCount} act={act} />
+      ) : null}
       {categories.map((category) => (
         <CategoryRow key={`${category.id}:${category.name}:${category.description}`} category={category} act={act} />
       ))}

@@ -627,7 +627,10 @@ impl Db {
             }
             tx.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('seeded', '1')", [])?;
         }
-        tx.commit()
+        tx.commit()?;
+        drop(conn);
+        let _ = self.ensure_clippings_category();
+        Ok(())
     }
 
     // ---- ajustes -------------------------------------------------------
@@ -1263,6 +1266,13 @@ impl Db {
         Ok(deleted)
     }
 
+    pub fn sheet_category(&self, id: i64) -> rusqlite::Result<Option<i64>> {
+        self.lock()
+            .query_row("SELECT category_id FROM sheets WHERE id = ?1", [id], |r| r.get(0))
+            .optional()
+            .map(|opt| opt.flatten())
+    }
+
     pub fn set_sheet_category(&self, id: i64, category_id: Option<i64>) -> rusqlite::Result<()> {
         self.lock().execute(
             "UPDATE sheets SET category_id = ?1, category_source = 'manual', \
@@ -1487,6 +1497,195 @@ impl Db {
         )?;
         tx.execute("DELETE FROM categories WHERE id = ?1", [id])?;
         tx.commit()
+    }
+
+    /// Asegura la categoría dedicada para recortes ("Recortes" o "Clippings").
+    /// Si existe una guardada en los ajustes (`clippings_category_id`), se respeta aunque
+    /// haya sido renombrada o cambiado de color. Si no, busca una existente llamada
+    /// "Recortes" o "Clippings". Si no existe ninguna, la crea automáticamente.
+    pub fn ensure_clippings_category(&self) -> rusqlite::Result<i64> {
+        let conn = self.lock();
+        // 1. Si hay un ID guardado en ajustes, verificar si existe en la base.
+        if let Some(id_str) = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'clippings_category_id'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?
+        {
+            if let Ok(id) = id_str.parse::<i64>() {
+                let exists: bool = conn
+                    .query_row("SELECT 1 FROM categories WHERE id = ?1", [id], |_| Ok(true))
+                    .optional()?
+                    .unwrap_or(false);
+                if exists {
+                    return Ok(id);
+                }
+            }
+        }
+
+        // 2. Si no hay ID o fue eliminada, buscar por nombre ('Recortes' o 'Clippings').
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM categories WHERE lower(name) IN ('recortes', 'clippings') ORDER BY id LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+
+        if let Some(id) = existing {
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('clippings_category_id', ?1) \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [id.to_string()],
+            )?;
+            return Ok(id);
+        }
+
+        // 3. Si no existe, crear la categoría según el idioma del usuario.
+        drop(conn);
+        let is_en = self.get_setting("locale").as_deref() == Some("en");
+        let (name, desc, color) = if is_en {
+            ("Clippings", "Clippings and quick captures from other apps", "#FF9500")
+        } else {
+            ("Recortes", "Recortes y capturas rápidas desde otras aplicaciones", "#FF9500")
+        };
+        match self.create_category(name, desc, color) {
+            Ok(id) => {
+                let _ = self.set_setting("clippings_category_id", &id.to_string());
+                Ok(id)
+            }
+            Err(_) => {
+                let conn = self.lock();
+                if let Some(id) = conn
+                    .query_row(
+                        "SELECT id FROM categories WHERE lower(name) IN ('recortes', 'clippings') ORDER BY id LIMIT 1",
+                        [],
+                        |r| r.get::<_, i64>(0),
+                    )
+                    .optional()?
+                {
+                    conn.execute(
+                        "INSERT INTO settings (key, value) VALUES ('clippings_category_id', ?1) \
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        [id.to_string()],
+                    )?;
+                    Ok(id)
+                } else {
+                    drop(conn);
+                    let alt = format!("{name} 1");
+                    let id = self.create_category(&alt, desc, color)?;
+                    let _ = self.set_setting("clippings_category_id", &id.to_string());
+                    Ok(id)
+                }
+            }
+        }
+    }
+
+    pub fn clippings_category_id(&self) -> Option<i64> {
+        self.ensure_clippings_category().ok()
+    }
+
+    pub fn is_reliable_clipping(
+        title: &str,
+        path: Option<&str>,
+        content: &str,
+        source: &str,
+        notes_dir: Option<&Path>,
+    ) -> bool {
+        if source == "capture" {
+            return true;
+        }
+
+        let file_name = path
+            .and_then(|p| Path::new(p).file_name().and_then(|n| n.to_str()))
+            .unwrap_or(title)
+            .to_lowercase();
+
+        let stem = path
+            .and_then(|p| Path::new(p).file_stem().and_then(|s| s.to_str()))
+            .unwrap_or(title)
+            .to_lowercase();
+
+        let is_clipping_stem = stem == "recortes"
+            || stem == "clippings"
+            || stem.starts_with("recortes-")
+            || stem.starts_with("recortes ")
+            || stem.starts_with("recorte-")
+            || stem.starts_with("clippings-")
+            || stem.starts_with("clipping-");
+
+        let is_clipping_name = file_name.starts_with("recortes.")
+            || file_name.starts_with("clippings.")
+            || is_clipping_stem;
+
+        if !is_clipping_name {
+            return false;
+        }
+
+        if let (Some(p), Some(nd)) = (path, notes_dir) {
+            if Path::new(p).starts_with(nd) {
+                return true;
+            }
+        }
+
+        content.lines().any(|l| {
+            let t = l.trim_start();
+            t.starts_with("— ")
+                || (t.starts_with("- ")
+                    && t.chars().skip(2).take(2).all(|c| c.is_ascii_digit()))
+        })
+    }
+
+    pub fn untagged_clippings(&self, notes_dir: Option<&Path>) -> rusqlite::Result<Vec<i64>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT id, title, path, content, source FROM sheets \
+             WHERE category_id IS NULL AND secret = 0 AND hidden = 0",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        })?;
+
+        let mut matches = Vec::new();
+        for row in rows {
+            let (id, title, path_str, content, source) = row?;
+            if Self::is_reliable_clipping(&title, path_str.as_deref(), &content, &source, notes_dir) {
+                matches.push(id);
+            }
+        }
+        Ok(matches)
+    }
+
+    pub fn migrate_clippings(&self, notes_dir: Option<&Path>) -> rusqlite::Result<usize> {
+        let ids = self.untagged_clippings(notes_dir)?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let category_id = self.ensure_clippings_category()?;
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        for id in &ids {
+            tx.execute(
+                "UPDATE sheets SET category_id = ?1, category_source = 'manual', \
+                 category_confidence = NULL WHERE id = ?2 AND category_id IS NULL",
+                params![category_id, id],
+            )?;
+        }
+        tx.execute(
+            "INSERT INTO settings (key, value) VALUES ('clippings_migrated', '1') \
+             ON CONFLICT(key) DO UPDATE SET value = '1'",
+            [],
+        )?;
+        tx.commit()?;
+        Ok(ids.len())
     }
 
     // ---- carpetas y exclusiones -----------------------------------------
@@ -2376,5 +2575,55 @@ mod tests {
         let detail = db.get_sheet(id).unwrap().unwrap();
         assert_eq!(detail.summary.category_id, Some(ideas));
         assert_eq!(detail.summary.category_source, Some("jev".into()));
+    }
+
+    #[test]
+    fn asegurar_categoria_recortes_crea_o_reutiliza() {
+        let db = db();
+        let cat_id = db.ensure_clippings_category().unwrap();
+        let cat_id2 = db.ensure_clippings_category().unwrap();
+        assert_eq!(cat_id, cat_id2);
+        let categories = db.categories().unwrap();
+        let cat = categories.into_iter().find(|c| c.id == cat_id).expect("la categoría de recortes existe");
+        assert!(cat.name == "Recortes" || cat.name == "Clippings");
+    }
+
+    #[test]
+    fn migrar_recortes_asigna_categoria_a_recortes_sin_clasificar() {
+        let db = db();
+        let cat_id = db.ensure_clippings_category().unwrap();
+
+        // 1. Hoja con source = "capture" sin categoría
+        db.upsert_sheet(&incoming("capture", "cap-1", "texto capturado rápido"), &session()).unwrap();
+        let id1 = db.sheet_id("capture", "cap-1").unwrap();
+
+        // 2. Archivo recortes-2026-10-14.txt con encabezado de recorte
+        db.upsert_sheet(&incoming("file", "/notas/recortes-2026-10-14.txt", "— 10:00 · Web\ncontenido del recorte"), &session()).unwrap();
+        let id2 = db.sheet_id("file", "/notas/recortes-2026-10-14.txt").unwrap();
+
+        // 3. Hoja normal cualquiera
+        db.upsert_sheet(&incoming("file", "/notas/apuntes.txt", "mis apuntes de la clase"), &session()).unwrap();
+        let id3 = db.sheet_id("file", "/notas/apuntes.txt").unwrap();
+
+        assert_eq!(db.sheet_category(id1).unwrap(), None);
+        assert_eq!(db.sheet_category(id2).unwrap(), None);
+        assert_eq!(db.sheet_category(id3).unwrap(), None);
+
+        let untagged = db.untagged_clippings(None).unwrap();
+        assert_eq!(untagged.len(), 2);
+        assert!(untagged.contains(&id1));
+        assert!(untagged.contains(&id2));
+        assert!(!untagged.contains(&id3));
+
+        let migrated = db.migrate_clippings(None).unwrap();
+        assert_eq!(migrated, 2);
+
+        assert_eq!(db.sheet_category(id1).unwrap(), Some(cat_id));
+        assert_eq!(db.sheet_category(id2).unwrap(), Some(cat_id));
+        assert_eq!(db.sheet_category(id3).unwrap(), None);
+
+        // Si se vuelve a correr, ya no hay nada que migrar
+        let migrated_again = db.migrate_clippings(None).unwrap();
+        assert_eq!(migrated_again, 0);
     }
 }

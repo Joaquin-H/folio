@@ -601,6 +601,8 @@ pub fn run() {
             commands::create_category,
             commands::update_category,
             commands::delete_category,
+            commands::ensure_clippings_category,
+            commands::migrate_clippings,
             commands::get_settings,
             commands::update_settings,
             commands::open_settings,

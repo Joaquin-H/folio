@@ -360,13 +360,22 @@ fn store(db: &Db, dir: &Path, time: &LocalTime, prepared: &Prepared) -> Result<S
     std::fs::create_dir_all(dir).map_err(e)?;
     let entry = prepared.entry();
     let target = Target::load(db);
+    let clippings_cat_id = db.ensure_clippings_category().map_err(e)?;
     if !prepared.sensitive {
         if let Some(path) = append_to_target(db, dir, target, time, &entry)? {
+            let key = path.to_string_lossy().to_string();
+            if let Some(sheet_id) = db.sheet_id("file", &key) {
+                let current_cat = db.sheet_category(sheet_id).ok().flatten();
+                if current_cat.is_none() {
+                    let _ = db.set_sheet_category(sheet_id, Some(clippings_cat_id));
+                }
+            }
             return Ok(Stored { name: stem_of(&path), path, alone: false, sensitive: false, first_note });
         }
     }
     let path = commands::write_new_file(db, dir, &own_stem(time), &entry)?;
-    commands::index_file(db, &path, entry)?;
+    let sheet_id = commands::index_file(db, &path, entry)?;
+    let _ = db.set_sheet_category(sheet_id, Some(clippings_cat_id));
     Ok(Stored { name: stem_of(&path), path, alone: true, sensitive: prepared.sensitive, first_note })
 }
 
@@ -718,6 +727,7 @@ mod tests {
         assert_eq!(sheet.content, "— 14:32 · Chrome · «Título de la página»\nHola\nmundo");
         assert_eq!(sheet.summary.title, "recortes-2026-10-14.txt");
         assert!(!sheet.summary.secret && !sheet.summary.hidden);
+        assert_eq!(sheet.summary.category_id, Some(folder.db.ensure_clippings_category().unwrap()));
         // El segundo ya no encuentra una carpeta nueva.
         assert!(!folder.send(&at(15, 0, 0), "otro", "Word", "").first_note);
     }

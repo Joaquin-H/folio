@@ -439,6 +439,14 @@ export const mockApi: Api = {
       scan: { running: false, lastScanAt: now - 90_000, lastScanMs: 4200, lastScanFiles: sheets.length },
       jev: jevStatus(),
       notesDir: NOTES_DIR,
+      clippingsCategoryId: categories.find((c) => ['recortes', 'clippings'].includes(c.name.toLowerCase()))?.id ?? null,
+      untaggedClippingsCount: sheets.filter(
+        (s) =>
+          s.categoryId === null &&
+          !s.secret &&
+          !s.hidden &&
+          (s.source === 'capture' || s.title.toLowerCase().includes('recorte') || s.title.toLowerCase().includes('clipping')),
+      ).length,
     });
   },
   async setSheetCategory(id, categoryId) {
@@ -520,6 +528,28 @@ export const mockApi: Api = {
     }
     askJev();
     changed();
+  },
+  async ensureClippingsCategory() {
+    const existing = categories.find((c) => ['recortes', 'clippings'].includes(c.name.toLowerCase()));
+    if (existing) return existing.id;
+    return this.createCategory('Recortes', 'Recortes y capturas rápidas', '#FF9500');
+  },
+  async migrateClippings() {
+    const catId = await this.ensureClippingsCategory();
+    let count = 0;
+    for (const s of sheets) {
+      if (
+        s.categoryId === null &&
+        !s.secret &&
+        !s.hidden &&
+        (s.source === 'capture' || s.title.toLowerCase().includes('recorte') || s.title.toLowerCase().includes('clipping'))
+      ) {
+        s.categoryId = catId;
+        count++;
+      }
+    }
+    changed();
+    return count;
   },
   getSettings: () => {
     const lockedCount = sheets.filter((s) => s.secret && !s.hidden).length;
