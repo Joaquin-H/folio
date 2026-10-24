@@ -110,6 +110,21 @@ export function Menu(props: {
       node.style.left = 'auto';
       node.style.right = '0';
     }
+    const triggerRect = node.parentElement?.getBoundingClientRect();
+    if (triggerRect) {
+      const spaceBelow = window.innerHeight - triggerRect.bottom - 10;
+      const spaceAbove = triggerRect.top - 10;
+      if (rect.height > spaceBelow && spaceAbove > spaceBelow && spaceAbove >= 140) {
+        node.classList.add('above');
+        node.style.maxHeight = `${Math.max(120, Math.floor(spaceAbove))}px`;
+      } else {
+        node.classList.remove('above');
+        node.style.maxHeight = `${Math.max(120, Math.floor(spaceBelow))}px`;
+      }
+      if (node.scrollHeight > Math.floor(Math.max(spaceBelow, spaceAbove)) || window.innerHeight <= 440) {
+        node.classList.add('compact');
+      }
+    }
   }, []);
   return (
     <div className={`menu${props.anchorClassName ? ` ${props.anchorClassName}` : ''}`} ref={ref}>

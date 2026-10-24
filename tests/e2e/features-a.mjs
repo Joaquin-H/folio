@@ -219,6 +219,62 @@ test('3. Modo bolsillo sin overlap: controles, buscador, indicador y carteles no
     await page.key('Escape');
     await page.settle(250);
   }
+
+  // 4. Orden de la barra superior y menú ⋯ visible a 390px de alto:
+  await page.open({ width: 520, height: 390, prefs: { size: 'custom', height: 390, spread: 'single', markdown: false } });
+  const leftLabels = await page.evaluate(`
+    [...document.querySelectorAll('.page-controls button')].map((b) => b.getAttribute('aria-label'))
+  `);
+  equal(leftLabels[0], 'Cerrar el cuaderno', 'primer botón izquierdo: Cerrar el cuaderno');
+  equal(leftLabels[1], 'Cerrar la ventana', 'segundo botón izquierdo: Cerrar la ventana');
+
+  const rightOrder = await page.evaluate(`
+    [...document.querySelectorAll('.page-actions > *')].map((el) =>
+      el.classList.contains('page-actions-sep')
+        ? 'sep'
+        : el.classList.contains('menu')
+          ? 'menu'
+          : el.getAttribute('aria-label')
+    )
+  `);
+  equal(rightOrder[0], 'Nueva hoja', 'primer botón derecho: Nueva hoja');
+  equal(rightOrder[1], 'Buscar y filtrar', 'segundo botón derecho: Buscar y filtrar');
+  equal(rightOrder[2], 'Mapa del cuaderno (Ctrl + M)', 'tercer botón derecho: Mapa');
+  equal(rightOrder[3], 'sep', 'separador antes del menú ⋯');
+  equal(rightOrder[4], 'menu', 'menú ⋯ al final');
+
+  // Abrir menú ⋯ a 390px de alto y verificar que el último ítem ("Cerrar Folio") es visible dentro del viewport
+  await page.clickOn('.page-actions .menu > button');
+  await page.until(() => page.ask('count', '.page-actions .menu-list'), 'el menú ⋯ no se abrió a 390px de alto');
+  await sleep(160);
+
+  const menuCheck = await page.evaluate(`(() => {
+    const list = document.querySelector('.page-actions .menu-list');
+    const items = [...list.querySelectorAll('.menu-item')];
+    const last = items[items.length - 1];
+    last.scrollIntoView({ block: 'nearest' });
+    const listRect = list.getBoundingClientRect();
+    const lastRect = last.getBoundingClientRect();
+    return {
+      vh: window.innerHeight,
+      lastLabel: last.textContent?.trim() ?? '',
+      listTop: listRect.top,
+      listBottom: listRect.bottom,
+      lastTop: lastRect.top,
+      lastBottom: lastRect.bottom,
+    };
+  })()`);
+  equal(menuCheck.vh, 390, 'el alto del viewport debe ser 390px');
+  check(menuCheck.lastLabel.includes('Cerrar Folio'), `el último ítem del menú debe ser Cerrar Folio (fue: ${menuCheck.lastLabel})`);
+  check(menuCheck.listBottom <= 390 && menuCheck.lastBottom <= 390 && menuCheck.lastTop >= 0, `el último ítem debe quedar visible en 390px de alto (${JSON.stringify(menuCheck)})`);
+
+  // Verificar encabezado rediseñado: metadatos discretos a la derecha y modo compacto en cuaderno chico
+  const metaRight = await page.evaluate(`(() => {
+    const head = document.querySelector('.page-head')?.getBoundingClientRect();
+    const meta = document.querySelector('.page-meta')?.getBoundingClientRect();
+    return head && meta ? meta.right >= head.right - 36 : false;
+  })()`);
+  check(metaRight, 'los metadatos del encabezado están ubicados a la derecha');
 });
 
 // -----------------------------------------------------------------------------

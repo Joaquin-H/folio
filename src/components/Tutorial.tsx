@@ -187,8 +187,8 @@ function spot(): string {
   return `${sheet}|${page}`;
 }
 
-const searchButton = () => rectOf('[data-tour="actions"] > button:nth-child(1)');
-const newButton = () => rectOf('[data-tour="actions"] > button:nth-child(2)');
+const searchButton = () => rectOf('[data-tour="search"]') ?? rectOf('[data-tour="actions"] > button:nth-child(2)');
+const newButton = () => rectOf('[data-tour="new"]') ?? rectOf('[data-tour="actions"] > button:nth-child(1)');
 /** Lo que hay en una hoja en blanco: el ícono y lo que dice. */
 const emptyNotice = () => merge([...document.querySelectorAll('.page-empty > *')].filter(visible).map(boxOf));
 

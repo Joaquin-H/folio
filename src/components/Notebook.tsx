@@ -262,8 +262,11 @@ function PageButtons(props: {
   banner?: ReactNode;
 }) {
   const t = useT();
-  const showMapButton = Boolean(props.onOpenMap && (props.geometry.perView === 2 || props.geometry.pageWidth >= 420));
+  const showMapButton = Boolean(props.onOpenMap && (props.geometry.perView === 2 || props.geometry.pageWidth >= 325));
   const isSingle = props.geometry.perView === 1;
+  const newHint = hintOf('new');
+  const searchHint = hintOf('search');
+  const hideHint = hintOf('hide-window');
 
   const controls = (
     <div className="page-controls" data-tour="controls">
@@ -275,7 +278,11 @@ function PageButtons(props: {
         className="icon-button"
         onClick={props.actions.onHide}
         aria-label={t('Cerrar la ventana')}
-        title={t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')}
+        title={
+          hideHint
+            ? `${t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')} (${hideHint})`
+            : t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')
+        }
       >
         <X size={15} />
       </button>
@@ -284,7 +291,24 @@ function PageButtons(props: {
 
   const actions = (
     <div className="page-actions" data-tour="actions">
-      <button type="button" className="icon-button" onClick={props.actions.onSearch} aria-label={t('Buscar y filtrar')} title={t('Buscar y filtrar')}>
+      <button
+        type="button"
+        className="icon-button"
+        data-tour="new"
+        onClick={props.actions.onCompose}
+        aria-label={t('Nueva hoja')}
+        title={newHint ? `${t('Nueva hoja')} (${newHint})` : t('Nueva hoja')}
+      >
+        <SquarePen size={15} />
+      </button>
+      <button
+        type="button"
+        className="icon-button"
+        data-tour="search"
+        onClick={props.actions.onSearch}
+        aria-label={t('Buscar y filtrar')}
+        title={searchHint ? `${t('Buscar y filtrar')} (${searchHint})` : t('Buscar y filtrar')}
+      >
         <Search size={15} />
       </button>
       {showMapButton && (
@@ -298,16 +322,16 @@ function PageButtons(props: {
           <Compass size={15} />
         </button>
       )}
-      <button type="button" className="icon-button" onClick={props.actions.onCompose} aria-label={t('Nueva hoja')} title={t('Nueva hoja')}>
-        <SquarePen size={15} />
-      </button>
+      <span className="page-actions-sep" aria-hidden="true" />
       <Menu label={t('Menú')} className="icon-button" items={props.menu} trigger={<Ellipsis size={17} />} />
     </div>
   );
 
+  const leftEdge = isSingle ? 38 : 8;
+
   if (isSingle) {
     return (
-      <div className="page-bar single" style={{ left: props.geometry.padLeft - 7, right: 8 }}>
+      <div className="page-bar single" style={{ left: leftEdge, right: 8 }}>
         {controls}
         {props.banner}
         {actions}
@@ -320,8 +344,8 @@ function PageButtons(props: {
       <div
         className="page-bar left"
         style={{
-          left: props.geometry.padLeft - 7,
-          width: props.geometry.pageWidth - (props.geometry.padLeft - 7) - 8,
+          left: leftEdge,
+          width: props.geometry.pageWidth - leftEdge - 8,
         }}
       >
         {controls}
@@ -855,12 +879,13 @@ function OpenSheet(props: {
   const canTurnBack = page > 0;
   const canTurnOn = page + g.perView < pageCount;
   // Con un cuaderno chico el espacio para el cartel es angosto: el cartel dice lo mismo con menos palabras.
-  const bandLeft = g.padLeft - 7 + 61 + 8;
-  const availableRoom = g.pageWidth - bandLeft - (g.perView === 1 ? 100 + 8 : 0);
+  const leftControlsRight = (g.perView === 1 ? 38 : 8) + 64 + 8;
+  const rightActionsWidth = (g.perView === 1 ? (g.pageWidth >= 325 ? 136 : 104) + 8 : 8);
+  const availableRoom = g.pageWidth - leftControlsRight - rightActionsWidth;
   const snug = availableRoom < 340;
   const tight = availableRoom < 250;
   const narrow = availableRoom < 170;
-  const ultraNarrow = availableRoom < 110;
+  const ultraNarrow = availableRoom < 120;
 
   const banner =
     writing && writing.status !== 'conflict' ? (
@@ -960,6 +985,11 @@ function OpenSheet(props: {
       </div>
     ) : null;
 
+  const isCompactHeader = g.pageWidth < 430;
+  const sourceText = isDraft ? t('Hoja nueva') : sourceLabel(sheet);
+  const versionText = plural(sheet.versionCount, 'versión anterior', 'versiones anteriores');
+  const dateText = relative ? `${heading.title}, ${heading.subtitle}` : `${heading.title} ${heading.subtitle}`;
+
   return (
     <>
       {active &&
@@ -975,7 +1005,7 @@ function OpenSheet(props: {
             {index === 0 && !props.hideHeader && (
               <header
                 ref={head}
-                className={`page-head${props.fading ? ' fading' : ''}${props.centerTitle !== false ? ' centered-title' : ''}`}
+                className={`page-head${props.fading ? ' fading' : ''}${props.centerTitle ? ' centered-title' : ''}${isCompactHeader ? ' compact' : ''}`}
                 style={{
                   top: TOP,
                   paddingLeft: g.padLeft,
@@ -984,108 +1014,121 @@ function OpenSheet(props: {
                 }}
               >
                 <div className="page-date" data-tauri-drag-region>
-                  <span data-tauri-drag-region>{relative ? `${heading.title}, ${heading.subtitle}` : `${heading.title} ${heading.subtitle}`}</span>
-                  <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
-                </div>
-                {writing && writing.title !== null ? (
-                  <label className="page-title editable" title={t('Cambiar el título de la hoja')}>
-                    <input
-                      value={writing.title}
-                      maxLength={80}
-                      spellCheck={false}
-                      aria-label={t('Título de la hoja')}
-                      placeholder={titleFromContent(text) || t('Sin título')}
-                      onChange={(event) => writer.rename(event.target.value)}
-                      onKeyDown={(event) => {
-                        // Los atajos de guardar valen igual acá que en el texto.
-                        const action = which(event.nativeEvent, ['finish', 'save']);
-                        if (action === 'finish') {
-                          event.preventDefault();
-                          void writer.finish();
-                        } else if (action === 'save') {
-                          event.preventDefault();
-                          void writer.flush();
-                        } else if (event.key === 'Enter' && editor.current) {
-                          placeCaret(editor.current, 'end');
-                        }
-                      }}
+                  <span className="page-date-main" data-tauri-drag-region>
+                    <span data-tauri-drag-region>{dateText}</span>
+                    <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
+                  </span>
+                  <div className="page-meta">
+                    <span className="sheet-chip meta-item" title={props.counter}>
+                      <span className="sheet-indicator-accent" aria-hidden="true" />
+                      <span className="meta-text">{props.counter}</span>
+                    </span>
+                    <span className="page-source meta-item" title={sourceText}>
+                      <Icon size={12} />
+                      <span className="meta-text">{sourceText}</span>
+                    </span>
+                    <Menu
+                      label={t('Cambiar la categoría de esta hoja')}
+                      heading={t('Categoría de esta hoja')}
+                      align="right"
+                      className={`chip meta-btn${category ? '' : ' unset'}`}
+                      items={categoryItems}
+                      trigger={
+                        category ? (
+                          <>
+                            <span className="dot" style={{ background: category.color }} />
+                            <span className="meta-text">{category.name}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="dot unset-dot" />
+                            <span className="meta-text">{t('Sin categoría')}</span>
+                          </>
+                        )
+                      }
                     />
-                    <span>{extensionOf(sheet.title) || (props.noteFormat === 'md' ? '.md' : '.txt')}</span>
-                  </label>
-                ) : (
-                  // Con encabezado, el título es el de la nota; el nombre del archivo queda a mano.
-                  <h2 className="page-title" title={front?.title ? sheet.title : undefined}>
-                    {front?.title || sheet.title}
-                  </h2>
-                )}
-                <div className="page-meta">
-                  <span className="sheet-chip" title={props.counter}>
-                    <span className="sheet-indicator-accent" aria-hidden="true" />
-                    {props.counter}
-                  </span>
-                  <span className="page-source">
-                    <Icon size={13} />
-                    {isDraft ? t('Hoja nueva') : sourceLabel(sheet)}
-                  </span>
-                  <Menu
-                    label={t('Cambiar la categoría de esta hoja')}
-                    heading={t('Categoría de esta hoja')}
-                    align="left"
-                    className={`chip${category ? '' : ' unset'}`}
-                    items={categoryItems}
-                    trigger={
-                      category ? (
-                        <>
-                          <span className="dot" style={{ background: category.color }} />
-                          {category.name}
-                        </>
-                      ) : (
-                        t('Sin categoría')
-                      )
-                    }
-                  />
-                  {sheet.source === 'notepad' && (
-                    <button
-                      type="button"
-                      className="chip action-chip"
-                      onClick={() => void saveNotepadToFolio()}
-                      title={t('Guardar esta nota en Folio para poder escribirla')}
-                      aria-label={t('Guardar en Folio')}
-                    >
-                      <FolderDown size={12} />
-                      {t('Guardar en Folio')}
-                    </button>
+                    {sheet.source === 'notepad' && (
+                      <button
+                        type="button"
+                        className="chip meta-btn action-chip"
+                        onClick={() => void saveNotepadToFolio()}
+                        title={t('Guardar esta nota en Folio para poder escribirla')}
+                        aria-label={t('Guardar en Folio')}
+                      >
+                        <FolderDown size={12} />
+                        <span className="meta-text">{t('Guardar en Folio')}</span>
+                      </button>
+                    )}
+                    {!isDraft && (
+                      <button
+                        type="button"
+                        className={`chip meta-btn pin-btn${sheet.pinned ? ' active' : ''}`}
+                        onClick={togglePinned}
+                        aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                        title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                      >
+                        {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                        <span className="meta-text">{sheet.pinned ? t('Fijada') : t('Fijar')}</span>
+                      </button>
+                    )}
+                    {sheet.versionCount > 0 && (
+                      <button
+                        type="button"
+                        className="chip meta-btn"
+                        onClick={() => setShowVersions(true)}
+                        title={versionText}
+                        aria-label={versionText}
+                      >
+                        <History size={12} />
+                        <span className="meta-text">{versionText}</span>
+                      </button>
+                    )}
+                    {front?.source && (
+                      <span className="page-tag source meta-item" title={t('Fuente: {source}', { source: front.source })}>
+                        {AI_SOURCE.test(front.source) ? <Sparkles size={11} /> : <Quote size={11} />}
+                        <span className="meta-text">{front.source}</span>
+                      </span>
+                    )}
+                    {front?.tags.map((tag) => (
+                      <span key={tag} className="page-tag tag meta-item" title={t('Etiqueta: {tag}', { tag })}>
+                        <span className="meta-text">{tag}</span>
+                      </span>
+                    ))}
+                    <SheetBadges sheet={sheet} />
+                  </div>
+                </div>
+                <div className="page-title-row">
+                  {writing && writing.title !== null ? (
+                    <label className="page-title editable" title={t('Cambiar el título de la hoja')}>
+                      <input
+                        value={writing.title}
+                        maxLength={80}
+                        spellCheck={false}
+                        aria-label={t('Título de la hoja')}
+                        placeholder={titleFromContent(text) || t('Sin título')}
+                        onChange={(event) => writer.rename(event.target.value)}
+                        onKeyDown={(event) => {
+                          // Los atajos de guardar valen igual acá que en el texto.
+                          const action = which(event.nativeEvent, ['finish', 'save']);
+                          if (action === 'finish') {
+                            event.preventDefault();
+                            void writer.finish();
+                          } else if (action === 'save') {
+                            event.preventDefault();
+                            void writer.flush();
+                          } else if (event.key === 'Enter' && editor.current) {
+                            placeCaret(editor.current, 'end');
+                          }
+                        }}
+                      />
+                      <span>{extensionOf(sheet.title) || (props.noteFormat === 'md' ? '.md' : '.txt')}</span>
+                    </label>
+                  ) : (
+                    // Con encabezado, el título es el de la nota; el nombre del archivo queda a mano.
+                    <h2 className="page-title" title={front?.title ? sheet.title : undefined}>
+                      {front?.title || sheet.title}
+                    </h2>
                   )}
-                  {!isDraft && (
-                    <button
-                      type="button"
-                      className={`chip pin-btn${sheet.pinned ? ' active' : ''}`}
-                      onClick={togglePinned}
-                      aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                      title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                    >
-                      {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-                      {sheet.pinned ? t('Fijada') : t('Fijar')}
-                    </button>
-                  )}
-                  {sheet.versionCount > 0 && (
-                    <button type="button" className="chip" onClick={() => setShowVersions(true)}>
-                      <History size={12} />
-                      {plural(sheet.versionCount, 'versión anterior', 'versiones anteriores')}
-                    </button>
-                  )}
-                  {front?.source && (
-                    <span className="page-tag source" title={t('Fuente: {source}', { source: front.source })}>
-                      {AI_SOURCE.test(front.source) ? <Sparkles size={11} /> : <Quote size={11} />}
-                      {front.source}
-                    </span>
-                  )}
-                  {front?.tags.map((tag) => (
-                    <span key={tag} className="page-tag tag" title={t('Etiqueta: {tag}', { tag })}>
-                      {tag}
-                    </span>
-                  ))}
-                  <SheetBadges sheet={sheet} />
                 </div>
                 {error && <p className="page-error">{error}</p>}
               </header>

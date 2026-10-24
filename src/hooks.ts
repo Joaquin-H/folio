@@ -34,7 +34,7 @@ const DEFAULT_PREFS: Prefs = {
   textSize: 'medium',
   markdown: true,
   hideHeader: false,
-  centerTitle: true,
+  centerTitle: false,
 };
 
 export function loadPrefs(): Prefs {
@@ -71,7 +71,7 @@ export function loadPrefs(): Prefs {
       textSize: saved.textSize === 'small' || saved.textSize === 'large' || saved.textSize === 'xlarge' ? saved.textSize : 'medium',
       markdown: saved.markdown !== false,
       hideHeader: saved.hideHeader === true,
-      centerTitle: saved.centerTitle !== false,
+      centerTitle: saved.centerTitle === true,
     };
   } catch {
     return DEFAULT_PREFS;
