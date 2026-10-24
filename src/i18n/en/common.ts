@@ -25,6 +25,7 @@ export const common: Record<string, string> = {
   // Botones y diálogos (ui.tsx)
   Cancelar: 'Cancel',
   Cerrar: 'Close',
+  Minimizar: 'Minimize',
   'Abrir en una ventana aparte': 'Open in a separate window',
   Listo: 'Done',
   Menos: 'Decrease',
