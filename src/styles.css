@@ -623,6 +623,23 @@ textarea:focus-visible {
   color: #fff;
 }
 
+.chip.pin-btn {
+  cursor: pointer;
+  gap: 5px;
+}
+
+.chip.pin-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.chip.pin-btn.active:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .page-error {
   margin: 8px 0 0;
   color: var(--danger);

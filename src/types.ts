@@ -28,6 +28,7 @@ export interface SheetSummary {
   /** El original ya no existe (archivo borrado o pestaña cerrada). */
   missing: boolean;
   versionCount: number;
+  pinned: boolean;
 }
 
 export interface Version {
@@ -49,6 +50,7 @@ export interface ListFilter {
   query?: string;
   beforeTs?: number;
   beforeId?: number;
+  beforePinned?: boolean;
   until?: number;
   limit?: number;
 }

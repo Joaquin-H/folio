@@ -8,6 +8,8 @@ import {
   LockOpen,
   NotebookPen,
   PenLine,
+  Pin,
+  PinOff,
   SquareArrowOutUpRight,
   StickyNote,
   Undo2,
@@ -103,7 +105,15 @@ export function useSheetMenus(
     },
   ];
 
-  const moreItems: MenuItem[] = [];
+  const togglePinned = () => run(api.setSheetPinned(sheet.id, !sheet.pinned));
+
+  const moreItems: MenuItem[] = [
+    {
+      label: sheet.pinned ? t('Desfijar hoja') : t('Fijar hoja'),
+      icon: sheet.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+      onSelect: togglePinned,
+    },
+  ];
   if (sheet.path && !sheet.missing) {
     moreItems.push(
       {
@@ -174,6 +184,7 @@ export function useSheetMenus(
     categoryItems,
     moreItems,
     error,
+    togglePinned,
     /** Saca la hoja de la papelera. */
     restore: () => run(api.setSheetHidden(sheet.id, false)),
     dialogs,

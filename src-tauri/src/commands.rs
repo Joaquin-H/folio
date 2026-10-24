@@ -158,6 +158,13 @@ pub async fn set_sheet_hidden(app: AppHandle, state: Ctx<'_>, id: i64, hidden: b
     Ok(())
 }
 
+#[tauri::command]
+pub async fn set_sheet_pinned(app: AppHandle, state: Ctx<'_>, id: i64, pinned: bool) -> Res<()> {
+    state.db.set_sheet_pinned(id, pinned).map_err(e)?;
+    notify_changed(&app);
+    Ok(())
+}
+
 // ---- escribir en Book ------------------------------------------------------
 
 /// Lo que devuelve un guardado cuando el original cambió por fuera mientras se lo editaba.

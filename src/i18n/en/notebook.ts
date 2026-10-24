@@ -114,6 +114,12 @@ export const notebook: Record<string, string> = {
   'El primer recorrido del disco puede tardar un momento.': 'The first disk scan may take a moment.',
 
   // sheet.tsx
+  'Fijar hoja': 'Pin sheet',
+  'Desfijar hoja': 'Unpin sheet',
+  'Fijar esta hoja': 'Pin this sheet',
+  'Desfijar esta hoja': 'Unpin this sheet',
+  'Fijada': 'Pinned',
+  'Fijar': 'Pin',
   'en {folder}': 'in {folder}',
   'Bloc de notas, pestaña cerrada': 'Notepad, closed tab',
   'Bloc de notas, sin guardar': 'Notepad, unsaved',

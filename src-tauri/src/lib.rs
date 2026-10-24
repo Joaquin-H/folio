@@ -590,6 +590,7 @@ pub fn run() {
             commands::set_sheet_category,
             commands::set_sheet_secret,
             commands::set_sheet_hidden,
+            commands::set_sheet_pinned,
             commands::create_note,
             commands::save_sheet,
             commands::open_original,

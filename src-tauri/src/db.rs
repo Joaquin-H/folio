@@ -46,8 +46,10 @@ CREATE TABLE IF NOT EXISTS sheets (
   hidden INTEGER NOT NULL DEFAULT 0,
   missing INTEGER NOT NULL DEFAULT 0,
   missing_at INTEGER,
+  pinned INTEGER NOT NULL DEFAULT 0,
   UNIQUE(source, source_key)
 );
+CREATE INDEX IF NOT EXISTS sheets_by_pinned_date ON sheets(pinned DESC, modified_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS sheets_by_date ON sheets(modified_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS sheets_by_hash ON sheets(content_hash);
 CREATE TABLE IF NOT EXISTS versions (
@@ -92,7 +94,7 @@ const SUMMARY_COLS: &str = "s.id, s.source, s.title, s.path, \
   CASE WHEN s.secret = 1 THEN s.content ELSE substr(s.content, 1, 900) END, \
   length(s.content), s.size, s.modified_at, s.category_id, s.category_source, \
   s.category_confidence, s.note_score, s.secret, s.secret_source, s.hidden, s.missing, \
-  (SELECT count(*) FROM versions v WHERE v.sheet_id = s.id)";
+  (SELECT count(*) FROM versions v WHERE v.sheet_id = s.id), s.pinned";
 
 const DEFAULT_CATEGORIES: &[(&str, &str, &str)] = &[
     ("Trabajo", "Tareas, reuniones, pendientes y temas laborales", "#007AFF"),
@@ -293,6 +295,7 @@ fn map_summary(r: &Row) -> rusqlite::Result<SheetSummary> {
         hidden: r.get(14)?,
         missing: r.get(15)?,
         version_count: r.get(16)?,
+        pinned: r.get::<_, i64>(17)? != 0,
     })
 }
 
@@ -409,6 +412,7 @@ impl Db {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
         conn.pragma_update(None, "wal_autocheckpoint", 250)?;
+        conn.execute("ALTER TABLE sheets ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", []).ok();
         conn.execute_batch(SCHEMA)?;
         Self::migrate(&mut conn)?;
         let db = Self {
@@ -431,6 +435,9 @@ impl Db {
             };
             if !has("missing_at")? {
                 tx.execute("ALTER TABLE sheets ADD COLUMN missing_at INTEGER", [])?;
+            }
+            if !has("pinned")? {
+                tx.execute("ALTER TABLE sheets ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", [])?;
             }
             if !has("jev_choice")? {
                 tx.execute_batch(
@@ -1039,24 +1046,34 @@ impl Db {
             args.push(Box::new(until));
         }
         if let (Some(ts), Some(id)) = (filter.before_ts, filter.before_id) {
-            conds.push("(s.modified_at < ? OR (s.modified_at = ? AND s.id < ?))".into());
-            args.push(Box::new(ts));
-            args.push(Box::new(ts));
-            args.push(Box::new(id));
+            if let Some(bp) = filter.before_pinned {
+                conds.push("(s.pinned < ? OR (s.pinned = ? AND (s.modified_at < ? OR (s.modified_at = ? AND s.id < ?))))".into());
+                let bp_val = if bp { 1i64 } else { 0i64 };
+                args.push(Box::new(bp_val));
+                args.push(Box::new(bp_val));
+                args.push(Box::new(ts));
+                args.push(Box::new(ts));
+                args.push(Box::new(id));
+            } else {
+                conds.push("(s.modified_at < ? OR (s.modified_at = ? AND s.id < ?))".into());
+                args.push(Box::new(ts));
+                args.push(Box::new(ts));
+                args.push(Box::new(id));
+            }
         }
         let limit = filter.limit.map(|l| l.max(1));
 
         let sql = if filter.view == "secret" {
             format!(
                 "SELECT {SUMMARY_COLS}, s.content FROM sheets s WHERE {} \
-                 ORDER BY s.modified_at DESC, s.id DESC",
+                 ORDER BY s.pinned DESC, s.modified_at DESC, s.id DESC",
                 conds.join(" AND ")
             )
         } else if let Some(limit) = limit {
             args.push(Box::new(limit));
             format!(
                 "SELECT {SUMMARY_COLS} FROM sheets s WHERE {} \
-                 ORDER BY s.modified_at DESC, s.id DESC LIMIT ?",
+                 ORDER BY s.pinned DESC, s.modified_at DESC, s.id DESC LIMIT ?",
                 conds.join(" AND ")
             )
         } else {
@@ -1073,7 +1090,7 @@ impl Db {
             let key = self.vault.current_key().unwrap_or(None);
             let query = filter.query.as_deref().map(str::trim).filter(|q| !q.is_empty()).map(|q| q.to_lowercase());
             let rows = stmt.query_map(params_from_iter(args.iter().map(|a| a.as_ref())), |r| {
-                Ok((map_summary(r)?, r.get::<_, String>(17)?))
+                Ok((map_summary(r)?, r.get::<_, String>(18)?))
             })?;
             let mut results = Vec::new();
             for item in rows {
@@ -1153,7 +1170,7 @@ impl Db {
         let sql = format!("SELECT {SUMMARY_COLS}, s.content, s.content_hash FROM sheets s WHERE s.id = ?1");
         let found = conn
             .query_row(&sql, [id], |r| {
-                Ok((map_summary(r)?, r.get::<_, String>(17)?, r.get::<_, String>(18)?))
+                Ok((map_summary(r)?, r.get::<_, String>(18)?, r.get::<_, String>(19)?))
             })
             .optional()?;
         let Some((mut summary, mut content, hash)) = found else {
@@ -1526,6 +1543,12 @@ impl Db {
         let conn = self.lock();
         conn.execute("UPDATE sheets SET hidden = ?1 WHERE id = ?2", params![hidden, id])?;
         Self::reindex(&conn, id)
+    }
+
+    pub fn set_sheet_pinned(&self, id: i64, pinned: bool) -> rusqlite::Result<()> {
+        self.lock()
+            .execute("UPDATE sheets SET pinned = ?1 WHERE id = ?2", params![pinned, id])?;
+        Ok(())
     }
 
     fn reindex(conn: &Connection, id: i64) -> rusqlite::Result<()> {
@@ -2199,6 +2222,7 @@ mod tests {
             query: None,
             before_ts: None,
             before_id: None,
+            before_pinned: None,
             until: None,
             limit: Some(100),
         })
@@ -2368,6 +2392,7 @@ mod tests {
                 query: Some("reunion".into()),
                 before_ts: None,
                 before_id: None,
+                before_pinned: None,
                 until: None,
                 limit: None,
             })
@@ -2395,6 +2420,7 @@ mod tests {
                 query: Some(query.into()),
                 before_ts: None,
                 before_id: None,
+                before_pinned: None,
                 until: None,
                 limit: None,
             };
@@ -2702,6 +2728,7 @@ mod tests {
             query: None,
             before_ts: None,
             before_id: None,
+            before_pinned: None,
             until: None,
             limit: Some(10),
         }).unwrap();
@@ -3004,5 +3031,68 @@ mod tests {
 
         assert_eq!(sheets.len(), 1);
         assert_eq!(sheets[0].title, "hoy.txt");
+    }
+
+    #[test]
+    fn fijar_hoja_la_mantiene_arriba_y_soporta_paginacion_por_cursor() {
+        let db = db();
+        let mut inc1 = incoming("file", "/notas/s1.txt", "primera nota");
+        inc1.modified_at = 100;
+        let mut inc2 = incoming("file", "/notas/s2.txt", "segunda nota");
+        inc2.modified_at = 200;
+        let mut inc3 = incoming("file", "/notas/s3.txt", "tercera nota");
+        inc3.modified_at = 300;
+
+        db.upsert_sheet(&inc1, &session()).unwrap();
+        db.upsert_sheet(&inc2, &session()).unwrap();
+        db.upsert_sheet(&inc3, &session()).unwrap();
+
+        let id1 = db.sheet_id("file", "/notas/s1.txt").unwrap();
+        let id2 = db.sheet_id("file", "/notas/s2.txt").unwrap();
+        let id3 = db.sheet_id("file", "/notas/s3.txt").unwrap();
+
+        let list_all = |before_pinned, before_ts, before_id, limit| {
+            db.list_sheets(&ListFilter {
+                view: "all".into(),
+                category_id: None,
+                query: None,
+                before_ts,
+                before_id,
+                before_pinned,
+                until: None,
+                limit: Some(limit),
+            }).unwrap()
+        };
+
+        // Sin fijar: s3, s2, s1
+        let initial = list_all(None, None, None, 10);
+        assert_eq!(initial.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id3, id2, id1]);
+        assert!(!initial[0].pinned);
+
+        // Fijamos s1 (la más vieja)
+        db.set_sheet_pinned(id1, true).unwrap();
+        let detail1 = db.get_sheet(id1).unwrap().unwrap();
+        assert!(detail1.summary.pinned);
+
+        // Con s1 fijada: s1 (fijada), s3, s2
+        let pinned_list = list_all(None, None, None, 10);
+        assert_eq!(pinned_list.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id1, id3, id2]);
+        assert!(pinned_list[0].pinned);
+        assert!(!pinned_list[1].pinned);
+
+        // Paginación por cursor: página 1 con límite 2 trae s1 y s3
+        let page1 = list_all(None, None, None, 2);
+        assert_eq!(page1.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id1, id3]);
+        let last = &page1[1];
+
+        // Página 2 a partir de s3 trae s2
+        let page2 = list_all(Some(last.pinned), Some(last.modified_at), Some(last.id), 2);
+        assert_eq!(page2.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id2]);
+
+        // Desfijamos s1 y vuelve al orden natural
+        db.set_sheet_pinned(id1, false).unwrap();
+        let unpinned_list = list_all(None, None, None, 10);
+        assert_eq!(unpinned_list.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id3, id2, id1]);
+        assert!(!unpinned_list[0].pinned);
     }
 }

@@ -20,6 +20,7 @@ pub struct SheetSummary {
     pub hidden: bool,
     pub missing: bool,
     pub version_count: i64,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,6 +53,7 @@ pub struct ListFilter {
     /// Cursor de paginación: la última hoja ya cargada.
     pub before_ts: Option<i64>,
     pub before_id: Option<i64>,
+    pub before_pinned: Option<bool>,
     /// "Ir a fecha": solo hojas modificadas hasta este instante (ms).
     pub until: Option<i64>,
     pub limit: Option<i64>,
