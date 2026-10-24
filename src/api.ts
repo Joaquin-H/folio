@@ -30,6 +30,7 @@ export interface Api {
   setSheetCategory(id: number, categoryId: number | null): Promise<void>;
   setSheetSecret(id: number, secret: boolean): Promise<void>;
   setSheetHidden(id: number, hidden: boolean): Promise<void>;
+  setSheetPinned(id: number, pinned: boolean): Promise<void>;
   /**
    * Crea una hoja escrita en Book: un archivo de texto en la carpeta de Book con ese
    * título como nombre. Con `categoryId` nace en esa categoría; con `open`, además se
@@ -184,6 +185,7 @@ const tauriApi: Api = {
   setSheetCategory: (id, categoryId) => invoke('set_sheet_category', { id, categoryId }),
   setSheetSecret: (id, secret) => invoke('set_sheet_secret', { id, secret }),
   setSheetHidden: (id, hidden) => invoke('set_sheet_hidden', { id, hidden }),
+  setSheetPinned: (id, pinned) => invoke('set_sheet_pinned', { id, pinned }),
   createNote: (title, content, categoryId, open = false) => invoke('create_note', { title, content, categoryId, open }),
   saveSheet: (id, content, options = {}) =>
     invoke('save_sheet', { id, content, title: options.title, baseHash: options.baseHash, force: options.force ?? false }),

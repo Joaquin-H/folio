@@ -248,7 +248,7 @@ export function useSheets(filter: ListFilter, revision: number) {
     loadingMore.current = true;
     const id = request.current;
     api
-      .listSheets({ ...filter, beforeTs: last.modifiedAt, beforeId: last.id, limit: PAGE })
+      .listSheets({ ...filter, beforePinned: last.pinned, beforeTs: last.modifiedAt, beforeId: last.id, limit: PAGE })
       .then((rows) => {
         if (id !== request.current) return;
         setItems((previous) => [...previous, ...rows]);
@@ -270,6 +270,7 @@ export function useSheets(filter: ListFilter, revision: number) {
       const last = all[all.length - 1];
       const rows = await api.listSheets({
         ...filter,
+        beforePinned: last?.pinned,
         beforeTs: last?.modifiedAt,
         beforeId: last?.id,
         limit: 500,

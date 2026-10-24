@@ -32,6 +32,8 @@ import {
   Mic,
   NotebookPen,
   PenLine,
+  Pin,
+  PinOff,
   Quote,
   Search,
   Sparkles,
@@ -367,7 +369,7 @@ function OpenSheet(props: {
   const isDraft = sheet.id === DRAFT;
   const detail = useSheetDetail(sheet, !isDraft);
   const [showVersions, setShowVersions] = useState(false);
-  const { categoryItems, moreItems, error, restore, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
+  const { categoryItems, moreItems, error, restore, togglePinned, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
   const [head, headSize] = useSize<HTMLElement>();
   const flow = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLPreElement>(null);
@@ -874,6 +876,18 @@ function OpenSheet(props: {
                     <Icon size={13} />
                     {isDraft ? t('Hoja nueva') : sourceLabel(sheet)}
                   </span>
+                  {!isDraft && (
+                    <button
+                      type="button"
+                      className={`chip pin-btn${sheet.pinned ? ' active' : ''}`}
+                      onClick={togglePinned}
+                      aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                      title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                    >
+                      {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                      {sheet.pinned ? t('Fijada') : t('Fijar')}
+                    </button>
+                  )}
                   {sheet.source === 'notepad' && (
                     <button
                       type="button"
@@ -1689,6 +1703,7 @@ export function Notebook(props: {
         hidden: false,
         missing: false,
         versionCount: 0,
+        pinned: false,
       },
       release: false,
     });

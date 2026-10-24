@@ -161,6 +161,7 @@ const sheets: MockSheet[] = seeds.map(([title, source, age, seeded, content]): M
     hidden: false,
     missing: false,
     versionCount: versions.length,
+    pinned: false,
     content,
     hash: fakeHash(content),
     versions,
@@ -389,13 +390,23 @@ export const mockApi: Api = {
     const rows = sheets
       .filter((s) => matches(s, filter))
       .filter((s) => filter.until === undefined || s.modifiedAt <= filter.until)
-      .filter(
-        (s) =>
+      .filter((s) => {
+        if (filter.beforePinned !== undefined && filter.beforeTs !== undefined) {
+          const sPin = Number(s.pinned);
+          const bpPin = Number(filter.beforePinned);
+          if (sPin < bpPin) return true;
+          if (sPin === bpPin) {
+            return s.modifiedAt < filter.beforeTs || (s.modifiedAt === filter.beforeTs && s.id < (filter.beforeId ?? 0));
+          }
+          return false;
+        }
+        return (
           filter.beforeTs === undefined ||
           s.modifiedAt < filter.beforeTs ||
-          (s.modifiedAt === filter.beforeTs && s.id < (filter.beforeId ?? 0)),
-      )
-      .sort((a, b) => b.modifiedAt - a.modifiedAt || b.id - a.id)
+          (s.modifiedAt === filter.beforeTs && s.id < (filter.beforeId ?? 0))
+        );
+      })
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.modifiedAt - a.modifiedAt || b.id - a.id)
       .slice(0, filter.limit ?? 40)
       .map(summary)
       .map((s) => {
@@ -459,6 +470,11 @@ export const mockApi: Api = {
     if (sheet) sheet.hidden = hidden;
     changed();
   },
+  async setSheetPinned(id, pinned) {
+    const sheet = sheets.find((s) => s.id === id);
+    if (sheet) sheet.pinned = pinned;
+    changed();
+  },
   async createNote(title, content, categoryId) {
     const raw = title.trim() || titleFromContent(content) || defaultNoteTitle();
     const name = raw.endsWith('.txt') || raw.endsWith('.md') ? raw : `${raw}.txt`;
@@ -466,7 +482,7 @@ export const mockApi: Api = {
       id: nextId++, source: 'file', title: name, path: `${NOTES_DIR}\\${name}`, preview: content.slice(0, 900),
       length: content.length, size: content.length, modifiedAt: Date.now(), categoryId: categoryId ?? null,
       categorySource: categoryId ? 'manual' : null, categoryConfidence: null, noteScore: null, secret: false,
-      secretSource: null, hidden: false, missing: false, versionCount: 0, content, hash: fakeHash(content), versions: [],
+      secretSource: null, hidden: false, missing: false, versionCount: 0, pinned: false, content, hash: fakeHash(content), versions: [],
     };
     sheets.push(sheet);
     // Recién escrita: queda pendiente hasta que esté quieta (acá, hasta «Clasificar ahora»).
