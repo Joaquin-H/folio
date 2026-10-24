@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './styles.css';
 import { App } from './App';
-import { CaptureWindow } from './components/CaptureWindow';
+import { CaptureWindow, TearOffWindow } from './components/CaptureWindow';
 import { SettingsWindow } from './components/Settings';
 import { applyPrefs, loadPrefs } from './hooks';
 
@@ -69,5 +69,15 @@ const which = new URLSearchParams(location.search).get('window');
 document.documentElement.dataset.window = which ?? 'notebook';
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{which === 'settings' ? <SettingsWindow /> : which === 'capture' ? <CaptureWindow /> : <App />}</StrictMode>,
+  <StrictMode>
+    {which === 'settings' ? (
+      <SettingsWindow />
+    ) : which === 'capture' ? (
+      <CaptureWindow />
+    ) : which === 'tearoff' ? (
+      <TearOffWindow />
+    ) : (
+      <App />
+    )}
+  </StrictMode>,
 );

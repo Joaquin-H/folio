@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, FileText, Mic, Minimize2, NotebookPen, Pin, Trash2 } from 'lucide-react';
-import { getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
+import { Book, Check, FileText, Mic, Minimize2, NotebookPen, Pin, Trash2 } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api, isTauri } from '../api';
-import { dayHeading, timeOf, titleFromContent } from '../format';
+import { dayHeading, extensionOf, stemOf, timeOf, titleFromContent } from '../format';
 import { usePrefs } from '../hooks';
 import { useT } from '../i18n';
 import { describe, hintOf, matches, useShortcuts } from '../shortcuts';
 import { playKeySound } from '../sounds';
-import type { Category } from '../types';
+import type { Category, FloatingRect, SheetDetail } from '../types';
 import { Menu, type MenuItem } from './ui';
 
 const closeWindow = () => {
@@ -16,10 +17,6 @@ const closeWindow = () => {
 
 /** Cuánto espera «Descartar» el segundo clic antes de volver a ser un botón común. */
 const DISCARD_WAIT = 4000;
-
-const EXPANDED_WIDTH = 440;
-const EXPANDED_HEIGHT = 572;
-const COLLAPSED_SIZE = 52;
 
 /**
  * Hoja suelta: se abre con el atajo global desde cualquier programa, siempre encima de
@@ -204,41 +201,43 @@ export function CaptureWindow() {
     }
   }, [t]);
 
-  const expand = useCallback(async () => {
-    if (isTauri) {
-      try {
-        const win = getCurrentWindow();
-        const pos = await win.outerPosition();
-        const scale = await win.scaleFactor();
-        const logX = scale > 0 ? pos.x / scale : pos.x;
-        const logY = scale > 0 ? pos.y / scale : pos.y;
+  const [floatingRect, setFloatingRect] = useState<FloatingRect | null>(null);
 
+  const expand = useCallback(async () => {
+    try {
+      let prefX: number | undefined;
+      let prefY: number | undefined;
+      if (!isTauri) {
         try {
+          const savedDock = localStorage.getItem('folio:capture:pos:collapsed');
+          if (savedDock) {
+            const parsed = JSON.parse(savedDock);
+            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+              prefX = parsed.x;
+              prefY = parsed.y;
+            }
+          }
+        } catch {}
+      } else {
+        try {
+          const win = getCurrentWindow();
+          const pos = await win.outerPosition();
+          const scale = await win.scaleFactor();
+          const logX = scale > 0 ? pos.x / scale : pos.x;
+          const logY = scale > 0 ? pos.y / scale : pos.y;
           localStorage.setItem(
             'folio:capture:pos:collapsed',
             JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
           );
         } catch {}
-
-        let targetX = Math.max(10, Math.round(logX - (EXPANDED_WIDTH - COLLAPSED_SIZE)));
-        let targetY = Math.max(10, Math.round(logY));
-        try {
-          const savedExp = localStorage.getItem('folio:capture:pos:expanded');
-          if (savedExp) {
-            const parsed = JSON.parse(savedExp);
-            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-              targetX = parsed.x;
-              targetY = parsed.y;
-            }
-          }
-        } catch {}
-
-        await win.setSize(new LogicalSize(EXPANDED_WIDTH, EXPANDED_HEIGHT));
-        await win.setPosition(new LogicalPosition(targetX, targetY));
-        await win.setFocus();
-      } catch (err) {
-        console.error('No se pudo expandir la hoja suelta:', err);
       }
+      const rect = await api.setFloatingMode(false, prefX, prefY);
+      setFloatingRect(rect);
+      try {
+        localStorage.setItem('folio:capture:pos:expanded', JSON.stringify({ x: rect.x, y: rect.y }));
+      } catch {}
+    } catch (err) {
+      console.error('No se pudo expandir la hoja suelta:', err);
     }
     setCollapsed(false);
     try {
@@ -249,39 +248,39 @@ export function CaptureWindow() {
 
   const collapse = useCallback(async () => {
     if (busy.current || settled.current) return;
-    if (isTauri) {
-      try {
-        const win = getCurrentWindow();
-        const pos = await win.outerPosition();
-        const scale = await win.scaleFactor();
-        const logX = scale > 0 ? pos.x / scale : pos.x;
-        const logY = scale > 0 ? pos.y / scale : pos.y;
-
+    try {
+      let prefX: number | undefined;
+      let prefY: number | undefined;
+      if (isTauri) {
         try {
+          const win = getCurrentWindow();
+          const pos = await win.outerPosition();
+          const scale = await win.scaleFactor();
+          const logX = scale > 0 ? pos.x / scale : pos.x;
+          const logY = scale > 0 ? pos.y / scale : pos.y;
           localStorage.setItem(
             'folio:capture:pos:expanded',
             JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
           );
         } catch {}
-
-        let targetX = Math.round(logX + EXPANDED_WIDTH - COLLAPSED_SIZE);
-        let targetY = Math.round(logY);
-        try {
-          const savedDock = localStorage.getItem('folio:capture:pos:collapsed');
-          if (savedDock) {
-            const parsed = JSON.parse(savedDock);
-            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-              targetX = parsed.x;
-              targetY = parsed.y;
-            }
-          }
-        } catch {}
-
-        await win.setSize(new LogicalSize(COLLAPSED_SIZE, COLLAPSED_SIZE));
-        await win.setPosition(new LogicalPosition(targetX, targetY));
-      } catch (err) {
-        console.error('No se pudo colapsar la hoja suelta:', err);
       }
+      try {
+        const savedDock = localStorage.getItem('folio:capture:pos:collapsed');
+        if (savedDock) {
+          const parsed = JSON.parse(savedDock);
+          if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+            prefX = parsed.x;
+            prefY = parsed.y;
+          }
+        }
+      } catch {}
+      const rect = await api.setFloatingMode(true, prefX, prefY);
+      setFloatingRect(rect);
+      try {
+        localStorage.setItem('folio:capture:pos:collapsed', JSON.stringify({ x: rect.x, y: rect.y }));
+      } catch {}
+    } catch (err) {
+      console.error('No se pudo colapsar la hoja suelta:', err);
     }
     setCollapsed(true);
     try {
@@ -300,24 +299,21 @@ export function CaptureWindow() {
   };
 
   useEffect(() => {
-    if (!isTauri) return;
     const initWindow = async () => {
       try {
-        const win = getCurrentWindow();
-        if (collapsedRef.current) {
-          await win.setSize(new LogicalSize(COLLAPSED_SIZE, COLLAPSED_SIZE));
-          const savedDock = localStorage.getItem('folio:capture:pos:collapsed');
-          if (savedDock) {
-            const { x, y } = JSON.parse(savedDock);
-            await win.setPosition(new LogicalPosition(x, y));
-          }
-        } else {
-          const savedExp = localStorage.getItem('folio:capture:pos:expanded');
-          if (savedExp) {
-            const { x, y } = JSON.parse(savedExp);
-            await win.setPosition(new LogicalPosition(x, y));
+        const key = collapsedRef.current ? 'folio:capture:pos:collapsed' : 'folio:capture:pos:expanded';
+        const saved = localStorage.getItem(key);
+        let px: number | undefined;
+        let py: number | undefined;
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+            px = parsed.x;
+            py = parsed.y;
           }
         }
+        const rect = await api.setFloatingMode(collapsedRef.current, px, py);
+        setFloatingRect(rect);
       } catch {}
     };
     void initWindow();
@@ -502,6 +498,8 @@ export function CaptureWindow() {
       <div
         className="loose-dock"
         data-tauri-drag-region
+        data-floating-x={floatingRect?.x}
+        data-floating-y={floatingRect?.y}
         onPointerDown={handleDockPointerDown}
         onPointerMove={handleDockPointerMove}
         onClick={handleDockClick}
@@ -525,7 +523,7 @@ export function CaptureWindow() {
   }
 
   return (
-    <div className="loose">
+    <div className="loose" data-floating-x={floatingRect?.x} data-floating-y={floatingRect?.y}>
       <header className="loose-head capture-head" data-tauri-drag-region>
         <div className="page-date" data-tauri-drag-region>
           <span data-tauri-drag-region>
@@ -675,6 +673,615 @@ export function CaptureWindow() {
             title={saveKeys ? t('Guardar y cerrar ({saveKeys})', { saveKeys }) : t('Guardar y cerrar')}
           >
             <Check size={16} />
+          </button>
+        </span>
+      </footer>
+    </div>
+  );
+}
+
+/** La hoja vive en la carpeta donde Book guarda lo que se escribe en él. */
+function inNotesDir(path: string | null, folder: string): boolean {
+  if (!path || !folder) return false;
+  const cut = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+  return cut > 0 && path.slice(0, cut).toLowerCase() === folder.toLowerCase();
+}
+
+/**
+ * Hoja arrancada del cuaderno («Arrancar hoja»): se abre en su propia ventana flotante,
+ * siempre encima de las demás, colapsable a un ícono en el dock, con botón de pin,
+ * editable con guardado automático y un botón «Devolver al cuaderno» para guardarla
+ * y cerrar la ventana flotante.
+ */
+export function TearOffWindow() {
+  const t = useT();
+  usePrefs();
+  useShortcuts();
+
+  const sheetId = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get('id');
+    return raw ? Number(raw) : 0;
+  }, []);
+
+  const storagePrefix = `folio:tearoff:${sheetId}`;
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(`${storagePrefix}:collapsed`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [pinned, setPinned] = useState(() => {
+    try {
+      return localStorage.getItem(`${storagePrefix}:pinned`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [detail, setDetail] = useState<SheetDetail | null>(null);
+  const [title, setTitle] = useState('');
+  const [text, setText] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [notesDir, setNotesDir] = useState('');
+  const [status, setStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [error, setError] = useState<string | null>(null);
+  const [floatingRect, setFloatingRect] = useState<FloatingRect | null>(null);
+  const [returned, setReturned] = useState(false);
+
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dirtyRef = useRef(false);
+  const baseHashRef = useRef<string | undefined>(undefined);
+  const saveTimerRef = useRef<number | null>(null);
+  const savingPromiseRef = useRef<Promise<boolean> | null>(null);
+  const latestRef = useRef({ title: '', text: '', renamable: false });
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
+  const pinnedRef = useRef(pinned);
+  pinnedRef.current = pinned;
+
+  const renamable = Boolean(detail && detail.source === 'file' && inNotesDir(detail.path, notesDir));
+  const editable = Boolean(detail && !detail.hidden && !detail.missing && (detail.source === 'file' || detail.source === 'capture'));
+  latestRef.current = { title, text, renamable };
+
+  useEffect(() => {
+    const displayTitle = title.trim() || detail?.title || t('Hoja flotante');
+    document.title = displayTitle;
+  }, [title, detail?.title, t]);
+
+  const loadData = useCallback(() => {
+    if (!sheetId) return;
+    void api
+      .getOverview()
+      .then((ov) => {
+        setCategories(ov.categories);
+        setNotesDir(ov.notesDir);
+      })
+      .catch(() => {});
+    void api
+      .getSheet(sheetId)
+      .then((loaded) => {
+        if (!loaded) return;
+        setDetail(loaded);
+        if (!dirtyRef.current) {
+          setTitle(stemOf(loaded.title));
+          setText(loaded.content);
+          baseHashRef.current = loaded.hash;
+        }
+      })
+      .catch((reason) => setError(String(reason)));
+  }, [sheetId]);
+
+  useEffect(() => {
+    loadData();
+    return api.onChanged(loadData);
+  }, [loadData]);
+
+  // Sincronizar estado inicial desde `listTornOffSheets` (por si se restauró colapsada o fijada).
+  useEffect(() => {
+    if (!sheetId) return;
+    void api
+      .listTornOffSheets()
+      .then(async (list) => {
+        const entry = list.find((item) => item.id === sheetId);
+        const initCollapsed = entry ? entry.collapsed : collapsedRef.current;
+        const initPinned = entry ? entry.pinned : pinnedRef.current;
+        setCollapsed(initCollapsed);
+        setPinned(initPinned);
+        try {
+          localStorage.setItem(`${storagePrefix}:collapsed`, String(initCollapsed));
+          localStorage.setItem(`${storagePrefix}:pinned`, String(initPinned));
+        } catch {}
+        const px = initCollapsed ? (entry?.collapsedX ?? undefined) : (entry?.expandedX ?? undefined);
+        const py = initCollapsed ? (entry?.collapsedY ?? undefined) : (entry?.expandedY ?? undefined);
+        const rect = await api.setFloatingMode(initCollapsed, px, py);
+        setFloatingRect(rect);
+      })
+      .catch(() => {});
+  }, [sheetId, storagePrefix]);
+
+  const flushSave = useCallback(async (): Promise<boolean> => {
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (!dirtyRef.current || !sheetId || !editable) return true;
+    if (savingPromiseRef.current) return savingPromiseRef.current;
+
+    const { title: currentTitle, text: currentText, renamable: canRename } = latestRef.current;
+    setStatus('saving');
+    setError(null);
+    const promise = api
+      .saveSheet(sheetId, currentText, {
+        title: canRename && currentTitle.trim() ? currentTitle.trim() : undefined,
+        baseHash: baseHashRef.current,
+        force: true,
+      })
+      .then((saved) => {
+        baseHashRef.current = saved.hash;
+        setDetail(saved);
+        dirtyRef.current = false;
+        setStatus('saved');
+        savingPromiseRef.current = null;
+        return true;
+      })
+      .catch((reason) => {
+        setStatus('error');
+        setError(String(reason));
+        savingPromiseRef.current = null;
+        return false;
+      });
+    savingPromiseRef.current = promise;
+    return promise;
+  }, [sheetId, editable]);
+
+  const scheduleSave = useCallback(() => {
+    dirtyRef.current = true;
+    setStatus('saving');
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      void flushSave();
+    }, 450);
+  }, [flushSave]);
+
+  const expand = useCallback(async () => {
+    try {
+      let prefX: number | undefined;
+      let prefY: number | undefined;
+      if (!isTauri) {
+        try {
+          const savedDock = localStorage.getItem(`${storagePrefix}:pos:collapsed`);
+          if (savedDock) {
+            const parsed = JSON.parse(savedDock);
+            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+              prefX = parsed.x;
+              prefY = parsed.y;
+            }
+          }
+        } catch {}
+      } else {
+        try {
+          const win = getCurrentWindow();
+          const pos = await win.outerPosition();
+          const scale = await win.scaleFactor();
+          const logX = scale > 0 ? pos.x / scale : pos.x;
+          const logY = scale > 0 ? pos.y / scale : pos.y;
+          localStorage.setItem(
+            `${storagePrefix}:pos:collapsed`,
+            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+          );
+        } catch {}
+      }
+      const rect = await api.setFloatingMode(false, prefX, prefY);
+      setFloatingRect(rect);
+      try {
+        localStorage.setItem(`${storagePrefix}:pos:expanded`, JSON.stringify({ x: rect.x, y: rect.y }));
+      } catch {}
+    } catch (err) {
+      console.error('No se pudo expandir la hoja flotante:', err);
+    }
+    setCollapsed(false);
+    try {
+      localStorage.setItem(`${storagePrefix}:collapsed`, 'false');
+    } catch {}
+    setTimeout(() => areaRef.current?.focus(), 60);
+  }, [storagePrefix]);
+
+  const collapse = useCallback(async () => {
+    await flushSave();
+    try {
+      let prefX: number | undefined;
+      let prefY: number | undefined;
+      if (isTauri) {
+        try {
+          const win = getCurrentWindow();
+          const pos = await win.outerPosition();
+          const scale = await win.scaleFactor();
+          const logX = scale > 0 ? pos.x / scale : pos.x;
+          const logY = scale > 0 ? pos.y / scale : pos.y;
+          localStorage.setItem(
+            `${storagePrefix}:pos:expanded`,
+            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+          );
+        } catch {}
+      }
+      try {
+        const savedDock = localStorage.getItem(`${storagePrefix}:pos:collapsed`);
+        if (savedDock) {
+          const parsed = JSON.parse(savedDock);
+          if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+            prefX = parsed.x;
+            prefY = parsed.y;
+          }
+        }
+      } catch {}
+      const rect = await api.setFloatingMode(true, prefX, prefY);
+      setFloatingRect(rect);
+      try {
+        localStorage.setItem(`${storagePrefix}:pos:collapsed`, JSON.stringify({ x: rect.x, y: rect.y }));
+      } catch {}
+    } catch (err) {
+      console.error('No se pudo colapsar la hoja flotante:', err);
+    }
+    setCollapsed(true);
+    try {
+      localStorage.setItem(`${storagePrefix}:collapsed`, 'true');
+    } catch {}
+  }, [flushSave, storagePrefix]);
+
+  const togglePin = () => {
+    setPinned((curr) => {
+      const next = !curr;
+      try {
+        localStorage.setItem(`${storagePrefix}:pinned`, String(next));
+      } catch {}
+      void api.updateTornOffState(sheetId, { pinned: next }).catch(() => {});
+      return next;
+    });
+  };
+
+  const returnToNotebook = useCallback(async () => {
+    const ok = await flushSave();
+    if (!ok) return;
+    await api.returnTornOffSheet(sheetId);
+    setReturned(true);
+    closeWindow();
+  }, [flushSave, sheetId]);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    const unlisten = listen<boolean>('book:tearoff-mode', ({ payload: targetCollapsed }) => {
+      if (targetCollapsed && !collapsedRef.current) {
+        void collapse();
+      } else if (!targetCollapsed && collapsedRef.current) {
+        void expand();
+      }
+    });
+    return () => void unlisten.then((stop) => stop());
+  }, [collapse, expand]);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let timer: number | null = null;
+    const unlisten = getCurrentWindow().onMoved(async ({ payload: pos }) => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        try {
+          const win = getCurrentWindow();
+          const scale = await win.scaleFactor();
+          const logX = Math.round(scale > 0 ? pos.x / scale : pos.x);
+          const logY = Math.round(scale > 0 ? pos.y / scale : pos.y);
+          const key = collapsedRef.current ? `${storagePrefix}:pos:collapsed` : `${storagePrefix}:pos:expanded`;
+          localStorage.setItem(key, JSON.stringify({ x: logX, y: logY }));
+          void api.updateTornOffState(sheetId, { x: logX, y: logY }).catch(() => {});
+        } catch {}
+      }, 250);
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      void unlisten.then((stop) => stop());
+    };
+  }, [sheetId, storagePrefix]);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let blurTimer: number | null = null;
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        if (blurTimer) {
+          window.clearTimeout(blurTimer);
+          blurTimer = null;
+        }
+      } else {
+        void flushSave();
+        if (!pinnedRef.current && !collapsedRef.current) {
+          blurTimer = window.setTimeout(() => {
+            if (!pinnedRef.current && !collapsedRef.current) {
+              void collapse();
+            }
+          }, 200);
+        }
+      }
+    });
+    return () => {
+      if (blurTimer) window.clearTimeout(blurTimer);
+      void unlisten.then((stop) => stop());
+    };
+  }, [collapse, flushSave]);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
+      if (!(await flushSave())) {
+        event.preventDefault();
+        return;
+      }
+      await api.returnTornOffSheet(sheetId).catch(() => {});
+    });
+    return () => void unlisten.then((stop) => stop());
+  }, [flushSave, sheetId]);
+
+  useEffect(() => api.onQuitRequested(async () => void (await flushSave())), [flushSave]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void flushSave();
+      } else if (matches(event, 'capture-save')) {
+        event.preventDefault();
+        void returnToNotebook();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [flushSave, returnToNotebook]);
+
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const wasDraggedRef = useRef(false);
+  const windowStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleDockPointerDown = async (e: React.PointerEvent) => {
+    pointerStartRef.current = { x: e.screenX, y: e.screenY };
+    wasDraggedRef.current = false;
+    if (isTauri) {
+      try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        windowStartPosRef.current = { x: pos.x, y: pos.y };
+      } catch {}
+    }
+  };
+
+  const handleDockPointerMove = (e: React.PointerEvent) => {
+    if (pointerStartRef.current) {
+      const dist = Math.hypot(e.screenX - pointerStartRef.current.x, e.screenY - pointerStartRef.current.y);
+      if (dist > 5) {
+        wasDraggedRef.current = true;
+      }
+    }
+  };
+
+  const handleDockClick = async (e: React.MouseEvent) => {
+    if (wasDraggedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (isTauri && windowStartPosRef.current) {
+      try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        const dx = Math.abs(pos.x - windowStartPosRef.current.x);
+        const dy = Math.abs(pos.y - windowStartPosRef.current.y);
+        if (dx > 4 || dy > 4) {
+          return;
+        }
+      } catch {}
+    }
+    void expand();
+  };
+
+  const category = categories.find((c) => c.id === detail?.categoryId);
+  const categoryItems: MenuItem[] = useMemo(
+    () => [
+      ...categories.map((c) => ({
+        label: c.name,
+        icon: <span className="dot" style={{ background: c.color }} />,
+        checked: c.id === detail?.categoryId,
+        onSelect: () => {
+          if (sheetId) void api.setSheetCategory(sheetId, c.id);
+        },
+      })),
+      {
+        label: t('Sin categoría'),
+        separator: true,
+        checked: (detail?.categoryId ?? null) === null,
+        onSelect: () => {
+          if (sheetId) void api.setSheetCategory(sheetId, null);
+        },
+      },
+    ],
+    [categories, detail?.categoryId, sheetId, t],
+  );
+
+  if (returned) {
+    return (
+      <div className="loose returned" data-returned="true">
+        <p className="loose-hint" style={{ padding: '24px 62px' }}>
+          {t('Devuelta al cuaderno')}
+        </p>
+      </div>
+    );
+  }
+
+  if (collapsed) {
+    const preview = title.trim() || detail?.title || titleFromContent(text);
+    const dockTooltip = `${preview || t('Hoja flotante')}\n${t('Clic para expandir')}`;
+    return (
+      <div
+        className="loose-dock tearoff-dock"
+        data-tauri-drag-region
+        data-sheet-id={sheetId}
+        data-floating-x={floatingRect?.x}
+        data-floating-y={floatingRect?.y}
+        onPointerDown={handleDockPointerDown}
+        onPointerMove={handleDockPointerMove}
+        onClick={handleDockClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            void expand();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={t('Expandir hoja suelta')}
+        title={dockTooltip}
+      >
+        <div className="loose-dock-inner" data-tauri-drag-region>
+          <FileText size={20} className="loose-dock-icon" />
+          <span className="loose-dock-badge" aria-hidden="true" />
+        </div>
+      </div>
+    );
+  }
+
+  const ts = detail?.modifiedAt ?? Date.now();
+  const heading = dayHeading(ts);
+  const ext = detail ? extensionOf(detail.title) : '';
+
+  return (
+    <div
+      className="loose tearoff-sheet"
+      data-sheet-id={sheetId}
+      data-floating-x={floatingRect?.x}
+      data-floating-y={floatingRect?.y}
+    >
+      <header className="loose-head capture-head" data-tauri-drag-region>
+        <div className="page-date" data-tauri-drag-region>
+          <span data-tauri-drag-region>
+            {heading.title}, {heading.subtitle}
+          </span>
+          <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {editable &&
+              (() => {
+                const dictationLabel = /Win/i.test(navigator.userAgent)
+                  ? t('Dictar con la voz (Win + H)')
+                  : t('Dictar con la voz');
+                return (
+                  <button
+                    type="button"
+                    className="icon-button icon-btn small dict-btn"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      areaRef.current?.focus();
+                      void api.startDictation().catch(() => {});
+                    }}
+                    aria-label={dictationLabel}
+                    title={dictationLabel}
+                  >
+                    <Mic size={14} />
+                  </button>
+                );
+              })()}
+            <button
+              type="button"
+              className={`icon-button icon-btn small capture-pin-btn${pinned ? ' pinned' : ''}`}
+              onClick={togglePin}
+              aria-label={pinned ? t('Desfijar hoja (se colapsa al cambiar de ventana)') : t('Fijar expandida')}
+              title={
+                pinned
+                  ? t('Desfijar hoja (se colapsa al cambiar de ventana)')
+                  : t('Fijar expandida para comparar con otras ventanas')
+              }
+            >
+              <Pin size={13} />
+            </button>
+            <button
+              type="button"
+              className="icon-button icon-btn small capture-collapse-btn dock-collapse"
+              onClick={() => void collapse()}
+              aria-label={t('Colapsar hoja')}
+              title={t('Colapsar en el dock')}
+            >
+              <Minimize2 size={13} />
+            </button>
+            <time dateTime={new Date(ts).toISOString()}>{timeOf(ts)}</time>
+          </div>
+        </div>
+        {renamable ? (
+          <label className="page-title editable" title={t('Cambiar el título de la hoja')}>
+            <input
+              value={title}
+              maxLength={80}
+              spellCheck={false}
+              aria-label={t('Título de la hoja')}
+              placeholder={titleFromContent(text) || t('Sin título')}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                scheduleSave();
+              }}
+              onBlur={() => void flushSave()}
+            />
+            <span>{ext || '.txt'}</span>
+          </label>
+        ) : (
+          <h2 className="page-title">{detail?.title || t('Sin título')}</h2>
+        )}
+        <div className="page-meta loose-meta">
+          <Menu
+            label={t('Cambiar la categoría de esta hoja')}
+            heading={t('Categoría de esta hoja')}
+            align="left"
+            className={`chip${category ? '' : ' unset'}`}
+            items={categoryItems}
+            trigger={
+              category ? (
+                <>
+                  <span className="dot" style={{ background: category.color }} />
+                  {category.name}
+                </>
+              ) : (
+                t('Sin categoría')
+              )
+            }
+          />
+        </div>
+      </header>
+      <textarea
+        ref={areaRef}
+        className="loose-text"
+        autoFocus
+        readOnly={!editable}
+        value={text}
+        spellCheck={false}
+        placeholder={t('Escribí acá…')}
+        aria-label={t('Texto de la hoja')}
+        onKeyDown={(event) => {
+          if (editable) playKeySound(event);
+        }}
+        onChange={(event) => {
+          if (!editable) return;
+          setText(event.target.value);
+          scheduleSave();
+        }}
+        onBlur={() => void flushSave()}
+      />
+      {error && <p className="form-error">{error}</p>}
+      <footer className="loose-foot">
+        <span className="loose-hint" role="status">
+          {status === 'saving' ? t('Guardando…') : status === 'error' ? t('No se pudo guardar') : t('Guardado')}
+        </span>
+        <span className="loose-actions">
+          <button
+            type="button"
+            className="icon-button return-sheet-btn"
+            onClick={() => void returnToNotebook()}
+            aria-label={t('Devolver al cuaderno')}
+            title={t('Devolver al cuaderno')}
+          >
+            <Book size={15} />
           </button>
         </span>
       </footer>

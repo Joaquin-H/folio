@@ -2,7 +2,7 @@
 import type { Api } from './api';
 import { defaultNoteTitle, titleFromContent } from './format';
 import { fold, frontMatter } from './markdown';
-import type { Ban, CaptureSeed, Category, Integration, IntegrationTool, ListFilter, ProviderId, ProviderStatus, Root, Settings, SheetDetail, SendTarget, Source } from './types';
+import type { Ban, CaptureSeed, Category, FloatingRect, Integration, IntegrationTool, ListFilter, ProviderId, ProviderStatus, Root, Settings, SheetDetail, SendTarget, Source, TornOffSheetState } from './types';
 // Las instrucciones de las integraciones son las mismas que instala el backend.
 import claudeSkill from '../integrations/claude/folio-notes/SKILL.md?raw';
 import codexBlock from '../integrations/codex/AGENTS.md?raw';
@@ -199,6 +199,157 @@ export const openedLinks: string[] = [];
 
 /** Veces que se pidió iniciar el dictado por voz de Windows. */
 export let dictationCalls = 0;
+
+const TORN_OFF_STORAGE_KEY = 'folio:mock:tornOffSheets';
+const FLOATING_POS_STORAGE_KEY = 'folio:mock:floatingRects';
+const FLOATING_EXPANDED_W = 440;
+const FLOATING_EXPANDED_H = 572;
+const FLOATING_COLLAPSED_SIZE = 52;
+const FLOATING_STACK_GAP = 8;
+const FLOATING_EDGE_PAD = 8;
+
+function loadMockTornOff(): TornOffSheetState[] {
+  try {
+    const raw = localStorage.getItem(TORN_OFF_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as TornOffSheetState[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMockTornOff(list: TornOffSheetState[]) {
+  try {
+    localStorage.setItem(TORN_OFF_STORAGE_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+function currentWindowFloatingKey(): string {
+  const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const which = params.get('window');
+  if (which === 'tearoff') {
+    const id = params.get('id') ?? '0';
+    return `tearoff-${id}`;
+  }
+  return 'capture';
+}
+
+function loadMockFloatingRects(): Record<string, FloatingRect> {
+  try {
+    const raw = localStorage.getItem(FLOATING_POS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, FloatingRect>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMockFloatingRects(rects: Record<string, FloatingRect>) {
+  try {
+    localStorage.setItem(FLOATING_POS_STORAGE_KEY, JSON.stringify(rects));
+  } catch {}
+}
+
+/**
+ * Misma lógica de posicionamiento/clamping que `compute_floating_rect` en Rust,
+ * para que las pruebas E2E en navegador verifiquen la dirección de expansión, el
+ * clamping dentro del área útil del monitor y el apilado sin superposición.
+ */
+export function computeFloatingRect(
+  workLeft: number,
+  workTop: number,
+  workWidth: number,
+  workHeight: number,
+  currentX: number,
+  currentY: number,
+  currentW: number,
+  targetCollapsed: boolean,
+  savedX?: number,
+  savedY?: number,
+  occupiedCollapsed: Array<{ x: number; y: number }> = [],
+): FloatingRect {
+  const minX = workLeft + FLOATING_EDGE_PAD;
+  const minY = workTop + FLOATING_EDGE_PAD;
+  const right = workLeft + workWidth - FLOATING_EDGE_PAD;
+  const bottom = workTop + workHeight - FLOATING_EDGE_PAD;
+  const midX = workLeft + workWidth / 2;
+
+  if (!targetCollapsed) {
+    const w = FLOATING_EXPANDED_W;
+    const h = FLOATING_EXPANDED_H;
+    const maxX = Math.max(minX, right - w);
+    const maxY = Math.max(minY, bottom - h);
+    const wasCollapsed = currentW <= FLOATING_COLLAPSED_SIZE + 20;
+    let rawX = currentX;
+    let rawY = currentY;
+    if (wasCollapsed) {
+      const spaceRight = right - currentX;
+      const spaceLeft = currentX + FLOATING_COLLAPSED_SIZE - minX;
+      const expandLeft =
+        (currentX + FLOATING_COLLAPSED_SIZE / 2 > midX && spaceLeft >= w) ||
+        (spaceRight < w && spaceLeft > spaceRight);
+      rawX = expandLeft ? currentX + FLOATING_COLLAPSED_SIZE - w : currentX;
+
+      const spaceDown = bottom - currentY;
+      const spaceUp = currentY + FLOATING_COLLAPSED_SIZE - minY;
+      const expandUp = spaceDown < h && spaceUp > spaceDown;
+      rawY = expandUp ? currentY + FLOATING_COLLAPSED_SIZE - h : currentY;
+    } else {
+      rawX = savedX ?? currentX;
+      rawY = savedY ?? currentY;
+    }
+    return {
+      x: Math.round(Math.min(maxX, Math.max(minX, rawX))),
+      y: Math.round(Math.min(maxY, Math.max(minY, rawY))),
+      width: w,
+      height: h,
+      collapsed: false,
+    };
+  }
+
+  const s = FLOATING_COLLAPSED_SIZE;
+  const maxX = Math.max(minX, right - s);
+  const maxY = Math.max(minY, bottom - s);
+  const wasExpanded = currentW > FLOATING_COLLAPSED_SIZE + 20;
+  let rawX = currentX;
+  let rawY = currentY;
+  if (savedX !== undefined && savedY !== undefined) {
+    rawX = savedX;
+    rawY = savedY;
+  } else if (wasExpanded) {
+    const centerX = currentX + currentW / 2;
+    rawX = centerX > midX ? currentX + currentW - s : currentX;
+    rawY = currentY;
+  }
+  let x = Math.round(Math.min(maxX, Math.max(minX, rawX)));
+  let y = Math.round(Math.min(maxY, Math.max(minY, rawY)));
+
+  const step = s + FLOATING_STACK_GAP;
+  const overlaps = (cx: number, cy: number) =>
+    occupiedCollapsed.some((o) => Math.abs(cx - o.x) < s - 2 && Math.abs(cy - o.y) < s - 2);
+  if (overlaps(x, y)) {
+    let placed = false;
+    for (let col = 0; col < 6 && !placed; col++) {
+      const tryX = col === 0 ? x : x + col * step <= maxX ? x + col * step : Math.max(minX, x - col * step);
+      for (let tryY = y; tryY <= maxY; tryY += step) {
+        if (!overlaps(tryX, tryY)) {
+          x = Math.round(tryX);
+          y = Math.round(tryY);
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+      for (let tryY = y - step; tryY >= minY; tryY -= step) {
+        if (!overlaps(tryX, tryY)) {
+          x = Math.round(tryX);
+          y = Math.round(tryY);
+          placed = true;
+          break;
+        }
+      }
+    }
+  }
+  return { x, y, width: s, height: s, collapsed: true };
+}
 
 const INTEGRATIONS: Record<IntegrationTool, { name: string; path: string; text: string; ownsFile: boolean }> = {
   claude: { name: 'Claude Code', path: 'C:\\Users\\demo\\.claude\\skills\\folio-notes\\SKILL.md', text: claudeSkill, ownsFile: true },
@@ -838,6 +989,93 @@ export const mockApi: Api = {
   startDictation: () => {
     dictationCalls += 1;
     return Promise.resolve();
+  },
+  async tearOffSheet(id, collapsed) {
+    const sheet = sheets.find((s) => s.id === id);
+    if (!sheet) throw new Error('La hoja ya no existe');
+    const list = loadMockTornOff();
+    const existing = list.find((item) => item.id === id);
+    const nextCollapsed = collapsed !== undefined ? collapsed : (existing?.collapsed ?? false);
+    const entry: TornOffSheetState = {
+      id,
+      collapsed: nextCollapsed,
+      pinned: existing?.pinned ?? false,
+      expandedX: existing?.expandedX ?? null,
+      expandedY: existing?.expandedY ?? null,
+      collapsedX: existing?.collapsedX ?? null,
+      collapsedY: existing?.collapsedY ?? null,
+    };
+    const nextList = existing ? list.map((item) => (item.id === id ? entry : item)) : [...list, entry];
+    saveMockTornOff(nextList);
+    changed();
+    return entry;
+  },
+  async returnTornOffSheet(id) {
+    const list = loadMockTornOff().filter((item) => item.id !== id);
+    saveMockTornOff(list);
+    const rects = loadMockFloatingRects();
+    delete rects[`tearoff-${id}`];
+    saveMockFloatingRects(rects);
+    changed();
+  },
+  async listTornOffSheets() {
+    return loadMockTornOff();
+  },
+  async updateTornOffState(id, patch) {
+    const list = loadMockTornOff();
+    const item = list.find((entry) => entry.id === id);
+    if (item) {
+      if (patch.collapsed !== undefined) item.collapsed = patch.collapsed;
+      if (patch.pinned !== undefined) item.pinned = patch.pinned;
+      if (patch.x !== undefined && patch.y !== undefined) {
+        if (item.collapsed) {
+          item.collapsedX = patch.x;
+          item.collapsedY = patch.y;
+        } else {
+          item.expandedX = patch.x;
+          item.expandedY = patch.y;
+        }
+      }
+      saveMockTornOff(list);
+    }
+  },
+  async setFloatingMode(collapsed, preferredX, preferredY) {
+    const key = currentWindowFloatingKey();
+    const rects = loadMockFloatingRects();
+    const current = rects[key] ?? {
+      x: preferredX ?? 1400,
+      y: preferredY ?? 120,
+      width: collapsed ? FLOATING_EXPANDED_W : FLOATING_COLLAPSED_SIZE,
+      height: collapsed ? FLOATING_EXPANDED_H : FLOATING_COLLAPSED_SIZE,
+      collapsed: !collapsed,
+    };
+    const occupied = Object.entries(rects)
+      .filter(([k, r]) => k !== key && r.collapsed)
+      .map(([, r]) => ({ x: r.x, y: r.y }));
+    const workW = typeof window !== 'undefined' && window.innerWidth > 200 ? window.innerWidth : 1920;
+    const workH = typeof window !== 'undefined' && window.innerHeight > 200 ? window.innerHeight : 1040;
+    const next = computeFloatingRect(
+      0,
+      0,
+      workW,
+      workH,
+      preferredX !== undefined ? preferredX : current.x,
+      preferredY !== undefined ? preferredY : current.y,
+      current.width,
+      collapsed,
+      preferredX,
+      preferredY,
+      occupied,
+    );
+    rects[key] = next;
+    saveMockFloatingRects(rects);
+    if (key.startsWith('tearoff-')) {
+      const id = Number(key.slice('tearoff-'.length));
+      if (!Number.isNaN(id)) {
+        await mockApi.updateTornOffState(id, { collapsed, x: next.x, y: next.y });
+      }
+    }
+    return next;
   },
   onCaptureSeed(callback) {
     seedListeners.add(callback);

@@ -1,14 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permisos de las ventanas de Book: el cuaderno, los ajustes y la captura rápida",
-  "windows": ["main", "settings", "capture"],
+  "description": "Permisos de las ventanas de Book: el cuaderno, los ajustes, la captura rápida y las hojas arrancadas",
+  "windows": ["main", "settings", "capture", "tearoff-*"],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",
     "core:window:allow-close",
     "core:window:allow-destroy",
     "core:window:allow-start-dragging",
-    "core:window:allow-set-size"
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-focus",
+    "core:window:allow-outer-position",
+    "core:window:allow-inner-size",
+    "core:window:allow-scale-factor"
   ]
 }

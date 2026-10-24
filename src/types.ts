@@ -329,6 +329,26 @@ export interface DayCount {
   count: number;
 }
 
+/** Estado persistido de una hoja arrancada del cuaderno para restaurarla al reabrir Folio. */
+export interface TornOffSheetState {
+  id: number;
+  collapsed: boolean;
+  pinned: boolean;
+  expandedX?: number | null;
+  expandedY?: number | null;
+  collapsedX?: number | null;
+  collapsedY?: number | null;
+}
+
+/** Posición y tamaño lógicos de una ventana flotante (hoja suelta o arrancada). */
+export interface FloatingRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
+}
+
 /** Asistentes de IA a los que Book les puede dejar instrucciones para tomar notas. */
 export type IntegrationTool = 'claude' | 'codex' | 'gemini';
 

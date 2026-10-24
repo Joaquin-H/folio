@@ -440,7 +440,7 @@ function OpenSheet(props: {
   const isDraft = sheet.id === DRAFT;
   const detail = useSheetDetail(sheet, !isDraft);
   const [showVersions, setShowVersions] = useState(false);
-  const { categoryItems, moreItems, error, restore, togglePinned, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
+  const { categoryItems, moreItems, error, restore, togglePinned, tearOff, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
   const [head, headSize] = useSize<HTMLElement>();
   const flow = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLPreElement>(null);
@@ -632,11 +632,18 @@ function OpenSheet(props: {
   );
 
   // Enter entra a escribir (y F2, el atajo de siempre para "editar esto"); Esc sale.
+  // Ctrl+T (o el atajo elegido para 'tear-off') arranca la hoja en su propia ventana flotante.
   useEffect(() => {
-    if (!active || isWriting) return;
+    if (!active) return;
     const onKey = (event: KeyboardEvent) => {
+      if (document.querySelector('.backdrop')) return;
+      if (!isDraft && matches(event, 'tear-off')) {
+        event.preventDefault();
+        void (isWriting ? writer.flush() : Promise.resolve()).then(() => tearOff());
+        return;
+      }
       // Enter sobre un botón o un campo es de ese control, no de la hoja.
-      if (document.querySelector('.backdrop') || !matches(event, 'write') || belongsToTarget(event)) return;
+      if (isWriting || !matches(event, 'write') || belongsToTarget(event)) return;
       event.preventDefault();
       if (sheet.source === 'notepad') {
         void saveNotepadToFolio();
@@ -646,7 +653,7 @@ function OpenSheet(props: {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [active, isWriting, startWriting, sheet.source, saveNotepadToFolio]);
+  }, [active, isDraft, isWriting, writer, tearOff, startWriting, sheet.source, saveNotepadToFolio]);
 
   const onReadDoubleClick = (event: MouseEvent<HTMLPreElement>) => {
     // El cursor queda al final de la palabra que se tocó, sin seleccionarla: así lo
