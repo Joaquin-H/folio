@@ -691,7 +691,7 @@ test('atajos: los menús y el botón «Listo» muestran la combinación vigente'
   equal(hints['Ajustes'], 'Ctrl + ,', 'menú: ajustes');
   equal(hints['Ir a la primera hoja'], 'Inicio', 'menú: primera hoja');
   equal(hints['Ir a la última hoja'], 'Fin', 'menú: última hoja');
-  equal(hints['Escribir en esta hoja'], 'Enter', 'menú: escribir');
+  equal(hints['Escribir en esta hoja'] ?? hints['Guardar en Folio para editar'], 'Enter', 'menú: escribir');
 
   await gotoSheet(page, WRITABLE);
   await press(page, KEYS.enter);

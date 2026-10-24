@@ -166,7 +166,6 @@ export function App() {
         event.key === 'F7'
       ) {
         event.preventDefault();
-        event.stopPropagation();
       }
     };
     window.addEventListener('keydown', preventBrowserShortcuts, { capture: true });

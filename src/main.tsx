@@ -47,7 +47,6 @@ window.addEventListener(
     // Ctrl+H (Historial), Ctrl+J (Descargas), Ctrl+P (Imprimir), Ctrl+G (Buscar), Ctrl+U (Código fuente)
     if (isCtrlOrMeta && (key === 'h' || key === 'j' || key === 'p' || key === 'g' || key === 'u')) {
       event.preventDefault();
-      event.stopPropagation();
       return;
     }
   },
