@@ -2260,6 +2260,35 @@ export function Notebook(props: {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  useEffect(() => api.onOpenMap(() => setMapOpen(true)), []);
+
+  useEffect(
+    () =>
+      api.onFocusSheet((targetId) => {
+        void finishWriting();
+        cancelTurn();
+        setClosed(false, true);
+        const found = live.current.sheets.findIndex((item) => item.id === targetId);
+        if (found >= 0) {
+          anchor.current = targetId;
+          stickToEnd.current = false;
+          setPageCount(1);
+          setPos({ sheet: found, page: 0 });
+        } else {
+          void loadAll().then((all) => {
+            const idx = all.findIndex((item) => item.id === targetId);
+            if (idx >= 0) {
+              anchor.current = targetId;
+              stickToEnd.current = false;
+              setPageCount(1);
+              setPos({ sheet: idx, page: 0 });
+            }
+          });
+        }
+      }),
+    [finishWriting, cancelTurn, setClosed, loadAll],
+  );
+
   const extra = sheets.length - items.length;
   const total = props.total !== undefined ? props.total + extra : done ? sheets.length : undefined;
   const counter = sheet

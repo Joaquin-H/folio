@@ -155,6 +155,10 @@ export interface Api {
   onQuitRequested(handler: () => Promise<void>): () => void;
   /** Avisa cuando el Book cambió. Devuelve la función para dejar de escuchar. */
   onChanged(callback: () => void): () => void;
+  /** Avisa cuando un agente o comando externo pidió abrir el mapa del cuaderno. */
+  onOpenMap(callback: () => void): () => void;
+  /** Avisa cuando un agente o comando externo pidió abrir una hoja concreta en el cuaderno. */
+  onFocusSheet(callback: (id: number) => void): () => void;
   window: {
     /** Cierra la ventana; Book sigue en la bandeja del sistema. */
     hide(): void;
@@ -270,6 +274,14 @@ const tauriApi: Api = {
   },
   onChanged(callback) {
     const unlisten = listen('book:changed', callback);
+    return () => void unlisten.then((stop) => stop());
+  },
+  onOpenMap(callback) {
+    const unlisten = listen('book:open-map', callback);
+    return () => void unlisten.then((stop) => stop());
+  },
+  onFocusSheet(callback) {
+    const unlisten = listen<number>('book:focus-sheet', ({ payload }) => callback(payload));
     return () => void unlisten.then((stop) => stop());
   },
   window: {
