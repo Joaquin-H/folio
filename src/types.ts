@@ -283,6 +283,9 @@ export type TextSize = 'small' | 'medium' | 'large' | 'xlarge';
  */
 export type CoverStyle = 'plain' | 'spots' | 'strap' | 'spine' | 'leather';
 
+/** Estilo del borde exterior de la ventana: ninguno (inmersivo), transparente (mesa flotante) o sólido (mesa opaca). */
+export type WindowFrame = 'none' | 'transparent' | 'solid';
+
 /** Preferencias de la ventana: cómo se ve el cuaderno. */
 export interface Prefs {
   theme: Theme;
@@ -292,7 +295,9 @@ export interface Prefs {
   coverStyle: CoverStyle;
   /** Mostrar las solapas de categorías arriba del cuaderno. */
   tabs: boolean;
-  /** Cuaderno sin marco: quita el fondo de la ventana para que solo se vea el cuaderno flotando. */
+  /** Borde de ventana alrededor del cuaderno: ninguno (inmersivo, por defecto), transparente o sólido. */
+  frame: WindowFrame;
+  /** Preferencia anterior migrada a `frame`. */
   borderless?: boolean;
   spread: Spread;
   size: BookSize;

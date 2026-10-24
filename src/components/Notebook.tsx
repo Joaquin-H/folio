@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type MutableRefObject,
@@ -831,6 +832,7 @@ function OpenSheet(props: {
   };
 
   const sides: Side[] = g.perView === 2 ? ['left', 'right'] : ['only'];
+  const sheetColor = category?.color;
   const finishHint = hintOf('finish');
   const saveHint = hintOf('save');
   const writeItem: MenuItem = isWriting
@@ -962,8 +964,9 @@ function OpenSheet(props: {
       {active &&
         sides.map((side, index) => (
           <div
-            className={`page ${side} ${mode}${writing ? (writing.isNew ? ' writing new' : ' writing') : ''}`}
+            className={`page ${side} ${mode}${sheetColor ? ' categorized' : ''}${writing ? (writing.isNew ? ' writing new' : ' writing') : ''}`}
             key={`page-${index}`}
+            style={sheetColor ? ({ '--sheet-cat-color': sheetColor } as CSSProperties) : undefined}
             onDoubleClick={isWriting ? undefined : onPaperDoubleClick}
           >
             {isWriting && <div className="write-bar" />}

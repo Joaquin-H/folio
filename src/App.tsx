@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { BookOpen, Lock, Minus, Power, Settings2, Sun, Trash2, X } from 'lucide-react';
+import { BookOpen, Lock, Power, Settings2, Sun, Trash2 } from 'lucide-react';
 import { api, isTauri, type Spot } from './api';
 import { Finder } from './components/Finder';
 import { Notebook, type FilterChip, type NotebookActions, type NotebookTab } from './components/Notebook';
@@ -188,14 +188,17 @@ export function App() {
   }, []);
 
   // El tamaño de la ventana sale del cuaderno: tamaño elegido, una o dos hojas, abierto o cerrado.
-  const shape = useMemo<Shape>(() => ({ spread: prefs.spread, closed, tabs: prefs.tabs }), [prefs.spread, closed, prefs.tabs]);
+  const shape = useMemo<Shape>(
+    () => ({ spread: prefs.spread, closed, tabs: prefs.tabs, frame: prefs.frame }),
+    [prefs.spread, closed, prefs.tabs, prefs.frame],
+  );
   const book = useMemo(() => bookBox(prefs.size, prefs.height, shape), [prefs.size, prefs.height, shape]);
   const sizingNow = sizing !== null;
   const [resizing, setResizing] = useState(false);
   useEffect(() => {
     // En modo tamaño la ventana no se toca: el cambio se aplica al soltar, de una sola vez.
     if (!isTauri || sizingNow) return;
-    const box = windowBox(book, prefs.tabs);
+    const box = windowBox(book, prefs.tabs, prefs.frame);
     const center = prefs.size === 'full' && !keepPlace.current;
     keepPlace.current = false;
     const fits = () => Math.abs(window.innerWidth - box.width) <= 1 && Math.abs(window.innerHeight - box.height) <= 1;
@@ -235,7 +238,7 @@ export function App() {
       window.clearTimeout(timer);
       window.removeEventListener('resize', recheck);
     };
-  }, [book, prefs.tabs, prefs.size, sizingNow]);
+  }, [book, prefs.tabs, prefs.frame, prefs.size, sizingNow]);
 
   // ---- modo tamaño ---------------------------------------------------------
   //
@@ -257,7 +260,7 @@ export function App() {
   }, []);
 
   const spotFor = useCallback((state: Sizing, like: Shape): Spot => {
-    const box = windowBox(boxForHeight(state.height, like), like.tabs);
+    const box = windowBox(boxForHeight(state.height, like), like.tabs, like.frame);
     return { dx: state.dx, dy: state.dy, width: box.width, height: box.height };
   }, []);
 
@@ -271,8 +274,10 @@ export function App() {
       const target = job.wanted;
       job.wanted = undefined;
       if (target === undefined) return;
-      const tabs = now.current.shape.tabs;
-      await api.window.ghost(target, [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom]).catch(() => {});
+      const { tabs, frame } = now.current.shape;
+      const margins: [number, number, number, number] =
+        frame === 'none' ? [0, 0, 0, 0] : [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom];
+      await api.window.ghost(target, margins).catch(() => {});
     });
   }, []);
 
@@ -371,7 +376,7 @@ export function App() {
       const pullX = grip.includes('e') ? 1 : grip.includes('w') ? -1 : 0;
       const pullY = grip.includes('s') ? 1 : grip.includes('n') ? -1 : 0;
       const origin = { x: event.screenX, y: event.screenY };
-      const before = windowBox(boxForHeight(base.height, like), like.tabs);
+      const before = windowBox(boxForHeight(base.height, like), like.tabs, like.frame);
       // El cartel se pone al día como mucho unas cuarenta veces por segundo.
       let refresh = 0;
 
@@ -381,7 +386,7 @@ export function App() {
         // En una esquina manda el eje que más se movió.
         const change = pullX && pullY ? (Math.abs(byWidth) > Math.abs(byHeight) ? byWidth : byHeight) : pullX ? byWidth : byHeight;
         const height = snapHeight(base.height + change, like);
-        const after = windowBox(boxForHeight(height, like), like.tabs);
+        const after = windowBox(boxForHeight(height, like), like.tabs, like.frame);
         // El lado opuesto al que se arrastra no se mueve.
         const next: Sizing = {
           dx: base.dx + (pullX < 0 ? before.width - after.width : 0),
@@ -528,31 +533,9 @@ export function App() {
 
   return (
     <div
-      className={`app${isMac ? ' mac' : ''}${resizing ? ' resizing' : ''}${sizing ? ' sizing' : ''}${prefs.borderless ? ' borderless' : ''}`}
+      className={`app${isMac ? ' mac' : ''}${resizing ? ' resizing' : ''}${sizing ? ' sizing' : ''}${prefs.frame !== 'solid' ? ' borderless' : ''}${prefs.frame === 'none' ? ' immersive' : ''}`}
       data-tauri-drag-region
     >
-      {prefs.borderless && (
-        <div className="borderless-window-controls" data-tauri-drag-region="false">
-          <button
-            type="button"
-            className="borderless-btn minimize"
-            onClick={() => api.window.minimize()}
-            aria-label={t('Minimizar')}
-            title={t('Minimizar')}
-          >
-            <Minus size={13} />
-          </button>
-          <button
-            type="button"
-            className="borderless-btn close"
-            onClick={() => api.window.hide()}
-            aria-label={t('Cerrar la ventana')}
-            title={t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')}
-          >
-            <X size={13} />
-          </button>
-        </div>
-      )}
       <Notebook
         filter={filter}
         revision={revision}

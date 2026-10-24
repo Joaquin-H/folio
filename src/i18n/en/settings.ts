@@ -231,6 +231,12 @@ export const settings: Record<string, string> = {
   'Solapas de categorías': 'Category tabs',
   'Asoman arriba del cuaderno y filtran las hojas. Si las ocultás, se filtra desde Buscar y filtrar.':
     'They peek out above the notebook and filter pages. If hidden, filter using Search & filter.',
+  'Borde de ventana': 'Window border',
+  'Ninguno muestra solo el cuaderno sin margen alrededor. Transparente deja flotar el cuaderno sobre el escritorio; Sólido usa un marco opaco.':
+    'None shows only the notebook with no outer margin. Transparent lets the notebook float over the desktop; Solid uses an opaque frame.',
+  Ninguno: 'None',
+  Transparente: 'Transparent',
+  Sólido: 'Solid',
   'Cuaderno sin marco': 'Borderless notebook',
   'Elimina el fondo de la ventana para que solo se vea el cuaderno flotando sobre el escritorio.':
     'Removes the window background so only the notebook floats over the desktop.',
