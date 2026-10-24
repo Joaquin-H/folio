@@ -1,7 +1,7 @@
 import { api } from '../../api';
 import { mark, useT } from '../../i18n';
 import { playSound } from '../../sounds';
-import type { BookSize, Prefs, Settings, TextSize, Theme } from '../../types';
+import type { BookSize, Prefs, Settings, TextSize, Theme, WindowFrame } from '../../types';
 import { ColorPicker } from '../ColorPicker';
 import { Segmented, Switch } from '../ui';
 import { CoverOptions } from './CoverOptions';
@@ -104,13 +104,18 @@ export function Look(props: {
           <Switch label={t('Solapas de categorías')} checked={prefs.tabs} onChange={(tabs) => onPrefs({ tabs })} />
         </Row>
         <Row
-          label={t('Cuaderno sin marco')}
-          detail={t('Elimina el fondo de la ventana para que solo se vea el cuaderno flotando sobre el escritorio.')}
+          label={t('Borde de ventana')}
+          detail={t('Ninguno muestra solo el cuaderno sin margen alrededor. Transparente deja flotar el cuaderno sobre el escritorio; Sólido usa un marco opaco.')}
         >
-          <Switch
-            label={t('Cuaderno sin marco')}
-            checked={prefs.borderless ?? false}
-            onChange={(borderless) => onPrefs({ borderless })}
+          <Segmented<WindowFrame>
+            label={t('Borde de ventana')}
+            value={prefs.frame ?? 'none'}
+            onChange={(frame) => onPrefs({ frame })}
+            options={[
+              { value: 'none', label: t('Ninguno') },
+              { value: 'transparent', label: t('Transparente') },
+              { value: 'solid', label: t('Sólido') },
+            ]}
           />
         </Row>
         <Row

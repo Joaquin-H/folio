@@ -96,70 +96,87 @@ test('feature 6: notas fijadas arriba y orden por modificación descendente', as
   }
 });
 
-// ---- Feature 7: Cuaderno sin marco toggle en Personalización ----
+// ---- Feature 7: Borde de ventana en Personalización ----
 
-test('feature 7: cuaderno sin marco toggle en personalización activa controles borderless', async (page) => {
-  await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'double', borderless: false } });
+test('feature 7: borde de ventana en personalización (ninguno inmersivo default, transparente, sólido)', async (page) => {
+  await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'double' } });
 
-  // 1. Abrir Ajustes con Ctrl + ,
+  // 1. Por defecto el borde es 'none' (inmersivo) y no existen los botones de ventana en la zona transparente
+  equal(await page.evaluate("document.documentElement.dataset.frame"), 'none', 'por defecto dataset.frame debe ser none');
+  equal(await page.ask('count', '.borderless-window-controls'), 0, 'no deben existir controles .borderless-window-controls');
+
+  // 2. Abrir Ajustes con Ctrl + ,
   await ctrlComma(page);
   await page.until(async () => (await page.ask('count', '.settings-panel')) > 0, 'no se abrió Ajustes');
 
-  // 2. Ir a pestaña Personalización (look)
+  // 3. Ir a pestaña Personalización (look)
   await page.clickOn('.tab-strip [role="tab"]', 'Personalización');
   await page.until(
     async () => (await page.evaluate("document.querySelector('#settings-tab-look')?.getAttribute('aria-selected')")) === 'true',
     'no se seleccionó la pestaña Personalización'
   );
 
-  // 3. Localizar switch Cuaderno sin marco
-  const switchSelector = 'button[role="switch"][aria-label="Cuaderno sin marco"]';
-  await page.until(async () => (await page.ask('count', switchSelector)) > 0, 'no se encontró el switch Cuaderno sin marco');
-  equal(
-    await page.evaluate(`document.querySelector(${JSON.stringify(switchSelector)}).getAttribute('aria-checked')`),
-    'false',
-    'arranca desactivado'
-  );
+  // 4. Localizar el selector "Borde de ventana" con opciones Ninguno / Transparente / Sólido
+  const groupSelector = '[role="tablist"][aria-label="Borde de ventana"]';
+  await page.until(async () => (await page.ask('count', groupSelector)) > 0, 'no se encontró el selector Borde de ventana');
 
-  // 4. Activar toggle
-  await page.clickOn(switchSelector);
+  // 5. Cambiar a Transparente
+  await page.clickOn(`${groupSelector} button`, 'Transparente');
   await page.until(
-    async () => (await page.evaluate(`document.querySelector(${JSON.stringify(switchSelector)}).getAttribute('aria-checked')`)) === 'true',
-    'el switch no cambió a checked'
+    async () => (await page.evaluate("document.documentElement.dataset.frame")) === 'transparent',
+    'dataset.frame no cambió a transparent'
   );
+  const prefsTransparent = await page.evaluate("JSON.parse(localStorage.getItem('book.prefs'))");
+  equal(prefsTransparent.frame, 'transparent', 'prefs.frame debe ser transparent');
+  equal(await page.evaluate("document.documentElement.dataset.borderless"), 'true', 'dataset.borderless debe ser true en modo transparente');
+  equal(await page.ask('count', '.borderless-window-controls'), 0, 'no deben existir controles .borderless-window-controls');
 
-  // 5. Verificar que la preferencia cambió a borderless: true y que se aplican estilos y controles de ventana
-  const prefsTrue = await page.evaluate("JSON.parse(localStorage.getItem('book.prefs'))");
-  equal(prefsTrue.borderless, true, 'la preferencia borderless debe ser true');
-  equal(await page.evaluate("document.documentElement.dataset.borderless"), 'true', 'dataset.borderless debe ser true');
-  check(await page.evaluate("document.querySelector('.app').classList.contains('borderless')"), 'la app tiene clase borderless');
-
-  // Controles de ventana
-  check((await page.ask('count', '.borderless-window-controls')) > 0, 'deben mostrarse los controles borderless');
-  check((await page.ask('count', '.borderless-btn.minimize')) > 0, 'debe existir botón minimizar');
-  check((await page.ask('count', '.borderless-btn.close')) > 0, 'debe existir botón cerrar');
-
-  // 6. Desactivar toggle
-  await page.clickOn(switchSelector);
+  // 6. Cambiar a Sólido
+  await page.clickOn(`${groupSelector} button`, 'Sólido');
   await page.until(
-    async () => (await page.evaluate(`document.querySelector(${JSON.stringify(switchSelector)}).getAttribute('aria-checked')`)) === 'false',
-    'el switch no volvió a unchecked'
+    async () => (await page.evaluate("document.documentElement.dataset.frame")) === 'solid',
+    'dataset.frame no cambió a solid'
   );
+  const prefsSolid = await page.evaluate("JSON.parse(localStorage.getItem('book.prefs'))");
+  equal(prefsSolid.frame, 'solid', 'prefs.frame debe ser solid');
+  equal(await page.evaluate("document.documentElement.dataset.borderless"), 'false', 'dataset.borderless debe ser false en modo sólido');
 
-  const prefsFalse = await page.evaluate("JSON.parse(localStorage.getItem('book.prefs'))");
-  equal(prefsFalse.borderless, false, 'la preferencia borderless debe ser false');
-  equal(await page.evaluate("document.documentElement.dataset.borderless"), 'false', 'dataset.borderless debe ser false');
-  check(!await page.evaluate("document.querySelector('.app').classList.contains('borderless')"), 'la app no debe tener clase borderless');
-  equal(await page.ask('count', '.borderless-window-controls'), 0, 'no deben existir controles borderless');
+  // 7. Volver a Ninguno (inmersivo) y verificar integración de solapas y ausencia de hueco en claro/oscuro
+  await page.clickOn(`${groupSelector} button`, 'Ninguno');
+  await page.until(
+    async () => (await page.evaluate("document.documentElement.dataset.frame")) === 'none',
+    'dataset.frame no volvió a none'
+  );
+  const prefsNone = await page.evaluate("JSON.parse(localStorage.getItem('book.prefs'))");
+  equal(prefsNone.frame, 'none', 'prefs.frame debe ser none');
+  check(await page.evaluate("document.querySelector('.app').classList.contains('immersive')"), 'la app tiene clase immersive');
 
-  // 7. Cerrar Ajustes
+  // 8. Cerrar Ajustes y verificar geometría inmersiva + categoría en claro y oscuro
   await page.key('Escape');
   await page.until(async () => (await page.ask('count', '.settings-panel')) === 0, 'Ajustes no se cerró');
+
+  const bookRect = await page.ask('box', '.book');
+  const tabsRect = await page.ask('box', '.tabs');
+  const leavesRect = await page.ask('box', '.leaves');
+  check(bookRect.top === 0 && bookRect.left === 0, 'en modo inmersivo el cuaderno empieza en (0, 0) sin margen exterior');
+  check(tabsRect.top >= bookRect.top && tabsRect.bottom <= leavesRect.top + 1, 'las solapas están integradas en el borde superior del cuaderno');
+
+  // Verificar que la hoja con categoría tiene su borde de color pegado a la hoja sin hueco negro en modo oscuro
+  await page.evaluate(`
+    const p = JSON.parse(localStorage.getItem('book.prefs'));
+    localStorage.setItem('book.prefs', JSON.stringify({ ...p, theme: 'dark' }));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'book.prefs' }));
+  `);
+  await page.until(async () => (await page.evaluate("document.documentElement.dataset.theme")) === 'dark', 'no cambió a tema oscuro');
+  const hasCatClass = await page.evaluate("document.querySelector('.page.left')?.classList.contains('categorized')");
+  check(hasCatClass === true, 'la hoja con categoría tiene la clase categorized en modo oscuro');
+  const catColor = await page.evaluate("document.querySelector('.page.left')?.style.getPropertyValue('--sheet-cat-color')");
+  check(Boolean(catColor && catColor.trim().length > 0), 'la hoja con categoría expone --sheet-cat-color');
 });
 
 // ---- Feature 8: Buscador de Opciones ----
 
-test('feature 8: buscador de ajustes encuentra sin marco, Jev (Integraciones+Clasificador), bilingüe es/en, tolerancia typo y estilos sin corte', async (page) => {
+test('feature 8: buscador de ajustes encuentra borde de ventana, Jev (Integraciones+Clasificador), bilingüe es/en, tolerancia typo y estilos sin corte', async (page) => {
   await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'double', lang: 'es' } });
 
   // 1. Abrir Ajustes con Ctrl + ,
@@ -195,7 +212,7 @@ test('feature 8: buscador de ajustes encuentra sin marco, Jev (Integraciones+Cla
 
   await page.until(async () => (await page.ask('count', '.settings-search-results')) > 0, 'no aparecieron resultados');
   const labels = await page.ask('labels', '.settings-search-item-label');
-  check(labels.some((l) => l.includes('Cuaderno sin marco')), `se esperaba Cuaderno sin marco en ${labels.join(' | ')}`);
+  check(labels.some((l) => l.includes('Borde de ventana')), `se esperaba Borde de ventana en ${labels.join(' | ')}`);
 
   // Verificar resaltado sin padding ni margen que separe letras, y que los resultados no se salgan del borde
   const highlights = await page.ask('labels', '.settings-search-row mark');
@@ -242,7 +259,7 @@ test('feature 8: buscador de ajustes encuentra sin marco, Jev (Integraciones+Cla
   // 5. Búsqueda bilingüe con UI en español: "theme", "border", "language", "integrations"
   for (const [enQuery, expectedEs] of [
     ['theme', 'Tema'],
-    ['border', 'Cuaderno sin marco'],
+    ['border', 'Borde de ventana'],
     ['language', 'Idioma'],
     ['integrations', 'Integraciones'],
   ]) {

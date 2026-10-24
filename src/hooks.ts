@@ -4,7 +4,7 @@ import { accentFor } from './format';
 import { setLanguage } from './i18n';
 import { MIN_HEIGHT, PRESET_HEIGHT, textVars } from './layout';
 import { setSoundsEnabled } from './sounds';
-import type { ListFilter, Prefs, SheetSummary } from './types';
+import type { ListFilter, Prefs, SheetSummary, WindowFrame } from './types';
 
 const PAGE = 40;
 
@@ -24,6 +24,7 @@ const DEFAULT_PREFS: Prefs = {
   cover: null,
   coverStyle: 'plain',
   tabs: true,
+  frame: 'none',
   borderless: false,
   spread: 'double',
   size: 'standard',
@@ -41,6 +42,12 @@ export function loadPrefs(): Prefs {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<Prefs>;
     const height = typeof saved.height === 'number' && saved.height >= MIN_HEIGHT ? Math.round(saved.height) : null;
     const lang = saved.lang === 'es' || saved.lang === 'en' ? saved.lang : 'auto';
+    const frame: WindowFrame =
+      saved.frame === 'none' || saved.frame === 'transparent' || saved.frame === 'solid'
+        ? saved.frame
+        : saved.borderless === true
+          ? 'transparent'
+          : 'none';
     setLanguage(lang);
     return {
       theme: saved.theme === 'light' || saved.theme === 'dark' ? saved.theme : 'auto',
@@ -51,7 +58,8 @@ export function loadPrefs(): Prefs {
           ? saved.coverStyle
           : 'plain',
       tabs: saved.tabs !== false,
-      borderless: saved.borderless === true,
+      frame,
+      borderless: frame === 'transparent',
       spread: saved.spread === 'single' ? 'single' : 'double',
       size:
         saved.size === 'pocket' || saved.size === 'full' || (saved.size === 'custom' && height !== null)
@@ -84,7 +92,9 @@ export function applyPrefs(prefs: Prefs) {
   const dark = prefs.theme === 'dark' || (prefs.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   root.dataset.theme = dark ? 'dark' : 'light';
   root.dataset.text = prefs.textSize;
-  root.dataset.borderless = prefs.borderless ? 'true' : 'false';
+  const frame: WindowFrame = prefs.frame ?? (prefs.borderless ? 'transparent' : 'none');
+  root.dataset.frame = frame;
+  root.dataset.borderless = frame !== 'solid' ? 'true' : 'false';
   // Alto de renglón y cuerpo de la letra: los comparten las hojas, la hoja suelta y las versiones.
   Object.entries(textVars(prefs.textSize)).forEach(([name, value]) => root.style.setProperty(name, value));
   setSoundsEnabled(prefs.sounds);
@@ -130,6 +140,8 @@ export function usePrefs() {
     if (patch.lang) setLanguage(patch.lang);
     setPrefs((current) => {
       const next = { ...current, ...patch };
+      if (patch.frame !== undefined) next.borderless = patch.frame === 'transparent';
+      else if (patch.borderless !== undefined) next.frame = patch.borderless ? 'transparent' : 'none';
       try {
         localStorage.setItem(PREFS_KEY, JSON.stringify(next));
       } catch {
