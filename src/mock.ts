@@ -774,5 +774,5 @@ export const mockApi: Api = {
     listeners.add(callback);
     return () => listeners.delete(callback);
   },
-  window: { hide() {}, quit() {}, async fit() {}, async place() {}, async ghost() {}, drag() {}, onClosing: () => () => {} },
+  window: { hide() {}, minimize() {}, quit() {}, async fit() {}, async place() {}, async ghost() {}, drag() {}, onClosing: () => () => {} },
 };

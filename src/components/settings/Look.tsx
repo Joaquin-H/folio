@@ -104,6 +104,16 @@ export function Look(props: {
           <Switch label={t('Solapas de categorías')} checked={prefs.tabs} onChange={(tabs) => onPrefs({ tabs })} />
         </Row>
         <Row
+          label={t('Cuaderno sin marco')}
+          detail={t('Elimina el fondo de la ventana para que solo se vea el cuaderno flotando sobre el escritorio.')}
+        >
+          <Switch
+            label={t('Cuaderno sin marco')}
+            checked={prefs.borderless ?? false}
+            onChange={(borderless) => onPrefs({ borderless })}
+          />
+        </Row>
+        <Row
           label={t('Ver los .md con formato')}
           detail={t('Títulos, listas, tareas y tablas, sobre el rayado. Al escribir se ve el texto plano, que es lo que se guarda.')}
         >

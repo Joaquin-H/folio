@@ -322,6 +322,8 @@ pub fn open_main_window(app: &AppHandle) {
         .min_inner_size(390.0, 480.0)
         .resizable(false)
         .maximizable(false)
+        .decorations(false)
+        .transparent(true)
         // Sin esto, en Windows el manejador nativo de arrastrar y soltar se queda con los
         // archivos y el evento `drop` de la página nunca llega (soltar una imagen sobre la tapa).
         .disable_drag_drop_handler();
@@ -337,8 +339,6 @@ pub fn open_main_window(app: &AppHandle) {
     };
     #[cfg(target_os = "macos")]
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
-    #[cfg(not(target_os = "macos"))]
-    let builder = builder.decorations(false);
     match builder.build() {
         Ok(window) => {
             let handle = app.clone();

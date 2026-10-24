@@ -231,6 +231,9 @@ export const settings: Record<string, string> = {
   'Solapas de categorías': 'Category tabs',
   'Asoman arriba del cuaderno y filtran las hojas. Si las ocultás, se filtra desde Buscar y filtrar.':
     'They peek out above the notebook and filter pages. If hidden, filter using Search & filter.',
+  'Cuaderno sin marco': 'Borderless notebook',
+  'Elimina el fondo de la ventana para que solo se vea el cuaderno flotando sobre el escritorio.':
+    'Removes the window background so only the notebook floats over the desktop.',
   'Ver los .md con formato': 'Render formatted .md',
   'Ocultar encabezado': 'Hide header',
   'Oculta el título, la fecha y los datos de la hoja para dejar más espacio al texto.':

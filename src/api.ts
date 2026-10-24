@@ -140,6 +140,8 @@ export interface Api {
   window: {
     /** Cierra la ventana; Book sigue en la bandeja del sistema. */
     hide(): void;
+    /** Minimiza la ventana. */
+    minimize(): void;
     /** Cierra Book del todo. */
     quit(): void;
     /** Lleva la ventana a ese tamaño (píxeles lógicos) sin que se salga de la pantalla. */
@@ -248,6 +250,7 @@ const tauriApi: Api = {
   },
   window: {
     hide: () => void getCurrentWindow().close(),
+    minimize: () => void getCurrentWindow().minimize(),
     quit: () => void invoke('quit_app'),
     fit: (width, height, center) => invoke('fit_window', { width, height, center }),
     place: (spot) => invoke('place_window', { ...spot }),

@@ -292,6 +292,8 @@ export interface Prefs {
   coverStyle: CoverStyle;
   /** Mostrar las solapas de categorías arriba del cuaderno. */
   tabs: boolean;
+  /** Cuaderno sin marco: quita el fondo de la ventana para que solo se vea el cuaderno flotando. */
+  borderless?: boolean;
   spread: Spread;
   size: BookSize;
   /** Alto del cuaderno, en píxeles, cuando el tamaño es a medida. */
