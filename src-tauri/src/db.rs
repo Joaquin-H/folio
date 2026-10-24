@@ -1736,21 +1736,26 @@ impl Db {
             return Ok(id);
         }
 
-        // 3. Si no existe, crear la categoría según el idioma del usuario.
-        drop(conn);
-        let is_en = self.get_setting("locale").as_deref() == Some("en");
+        // 3. Si no existe, crear la categoría según el idioma del usuario sin reabrir notas no clasificadas.
+        let is_en = conn
+            .query_row("SELECT value FROM settings WHERE key = 'locale'", [], |r| r.get::<_, String>(0))
+            .optional()?
+            .as_deref()
+            == Some("en");
         let (name, desc, color) = if is_en {
             ("Clippings", "Clippings and quick captures from other apps", "#FF9500")
         } else {
             ("Recortes", "Recortes y capturas rápidas desde otras aplicaciones", "#FF9500")
         };
-        match self.create_category(name, desc, color) {
-            Ok(id) => {
-                let _ = self.set_setting("clippings_category_id", &id.to_string());
-                Ok(id)
-            }
+        let next_pos: i64 = conn
+            .query_row("SELECT coalesce(max(position) + 1, 0) FROM categories", [], |r| r.get(0))
+            .unwrap_or(0);
+        let id = match conn.execute(
+            "INSERT INTO categories (name, description, color, position) VALUES (?1, ?2, ?3, ?4)",
+            params![name, desc, color, next_pos],
+        ) {
+            Ok(_) => conn.last_insert_rowid(),
             Err(_) => {
-                let conn = self.lock();
                 if let Some(id) = conn
                     .query_row(
                         "SELECT id FROM categories WHERE lower(name) IN ('recortes', 'clippings') ORDER BY id LIMIT 1",
@@ -1759,21 +1764,23 @@ impl Db {
                     )
                     .optional()?
                 {
-                    conn.execute(
-                        "INSERT INTO settings (key, value) VALUES ('clippings_category_id', ?1) \
-                         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                        [id.to_string()],
-                    )?;
-                    Ok(id)
+                    id
                 } else {
-                    drop(conn);
                     let alt = format!("{name} 1");
-                    let id = self.create_category(&alt, desc, color)?;
-                    let _ = self.set_setting("clippings_category_id", &id.to_string());
-                    Ok(id)
+                    conn.execute(
+                        "INSERT INTO categories (name, description, color, position) VALUES (?1, ?2, ?3, ?4)",
+                        params![&alt, desc, color, next_pos],
+                    )?;
+                    conn.last_insert_rowid()
                 }
             }
-        }
+        };
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('clippings_category_id', ?1) \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [id.to_string()],
+        )?;
+        Ok(id)
     }
 
     pub fn clippings_category_id(&self) -> Option<i64> {
