@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Mic, NotebookPen, Trash2 } from 'lucide-react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Check, FileText, Mic, Minimize2, NotebookPen, Pin, Trash2 } from 'lucide-react';
+import { getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
 import { api, isTauri } from '../api';
 import { dayHeading, timeOf, titleFromContent } from '../format';
 import { usePrefs } from '../hooks';
@@ -17,6 +17,10 @@ const closeWindow = () => {
 /** Cuánto espera «Descartar» el segundo clic antes de volver a ser un botón común. */
 const DISCARD_WAIT = 4000;
 
+const EXPANDED_WIDTH = 440;
+const EXPANDED_HEIGHT = 572;
+const COLLAPSED_SIZE = 52;
+
 /**
  * Hoja suelta: se abre con el atajo global desde cualquier programa, siempre encima de
  * las demás ventanas, y se ve como una hoja del cuaderno. Nace con un título con la
@@ -30,14 +34,50 @@ export function CaptureWindow() {
   // y muestra los atajos vigentes.
   usePrefs();
   useShortcuts();
+
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('folio:capture:collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [pinned, setPinned] = useState(() => {
+    try {
+      return localStorage.getItem('folio:capture:pinned') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   useEffect(() => {
-    document.title = t('Nueva hoja');
-  }, [t]);
+    document.title = collapsed ? t('Hoja suelta') : t('Nueva hoja');
+  }, [t, collapsed]);
+
   const born = useMemo(() => Date.now(), []);
-  const [title, setTitle] = useState('');
-  const [text, setText] = useState('');
+  const [title, setTitle] = useState<string>(() => {
+    try {
+      const draft = localStorage.getItem('folio:capture:draft');
+      if (draft) return String(JSON.parse(draft).title ?? '');
+    } catch {}
+    return '';
+  });
+  const [text, setText] = useState<string>(() => {
+    try {
+      const draft = localStorage.getItem('folio:capture:draft');
+      if (draft) return String(JSON.parse(draft).text ?? '');
+    } catch {}
+    return '';
+  });
   const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [categoryId, setCategoryId] = useState<number | null>(() => {
+    try {
+      const draft = localStorage.getItem('folio:capture:draft');
+      if (draft) return JSON.parse(draft).categoryId ?? null;
+    } catch {}
+    return null;
+  });
   const [noteFormat, setNoteFormat] = useState<'txt' | 'md'>('txt');
   useEffect(() => {
     void api.getSettings().then((s) => setNoteFormat(s.noteFormat ?? 'txt')).catch(() => {});
@@ -63,6 +103,25 @@ export function CaptureWindow() {
   const settled = useRef(false);
   const latest = useRef({ title, text, categoryId });
   latest.current = { title, text, categoryId };
+
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
+  const pinnedRef = useRef(pinned);
+  pinnedRef.current = pinned;
+  const discardingRef = useRef(discarding);
+  discardingRef.current = discarding;
+
+  useEffect(() => {
+    if (text || title || categoryId !== null) {
+      try {
+        localStorage.setItem('folio:capture:draft', JSON.stringify({ title, text, categoryId }));
+      } catch {}
+    } else {
+      try {
+        localStorage.removeItem('folio:capture:draft');
+      } catch {}
+    }
+  }, [title, text, categoryId]);
   const heading = dayHeading(born);
   const saveHint = hintOf('capture-save');
   const saveKeys = describe('capture-save');
@@ -90,6 +149,10 @@ export function CaptureWindow() {
       if (busy.current) return;
       if (how === 'discard' || !text.trim()) {
         settled.current = true;
+        try {
+          localStorage.removeItem('folio:capture:draft');
+          localStorage.removeItem('folio:capture:collapsed');
+        } catch {}
         return closeWindow();
       }
       busy.current = true;
@@ -98,6 +161,10 @@ export function CaptureWindow() {
         .createNote(finalTitle, text, categoryId ?? undefined, how === 'notepad')
         .then(() => {
           settled.current = true;
+          try {
+            localStorage.removeItem('folio:capture:draft');
+            localStorage.removeItem('folio:capture:collapsed');
+          } catch {}
           closeWindow();
           return true;
         })
@@ -125,6 +192,10 @@ export function CaptureWindow() {
       const finalTitle = name.trim() || titleFromContent(written) || t('Sin título');
       await api.createNote(finalTitle, written, chosenCategory ?? undefined);
       settled.current = true;
+      try {
+        localStorage.removeItem('folio:capture:draft');
+        localStorage.removeItem('folio:capture:collapsed');
+      } catch {}
       return true;
     } catch (reason) {
       busy.current = false;
@@ -132,6 +203,172 @@ export function CaptureWindow() {
       return false;
     }
   }, [t]);
+
+  const expand = useCallback(async () => {
+    if (isTauri) {
+      try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        const scale = await win.scaleFactor();
+        const logX = scale > 0 ? pos.x / scale : pos.x;
+        const logY = scale > 0 ? pos.y / scale : pos.y;
+
+        try {
+          localStorage.setItem(
+            'folio:capture:pos:collapsed',
+            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+          );
+        } catch {}
+
+        let targetX = Math.max(10, Math.round(logX - (EXPANDED_WIDTH - COLLAPSED_SIZE)));
+        let targetY = Math.max(10, Math.round(logY));
+        try {
+          const savedExp = localStorage.getItem('folio:capture:pos:expanded');
+          if (savedExp) {
+            const parsed = JSON.parse(savedExp);
+            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+              targetX = parsed.x;
+              targetY = parsed.y;
+            }
+          }
+        } catch {}
+
+        await win.setSize(new LogicalSize(EXPANDED_WIDTH, EXPANDED_HEIGHT));
+        await win.setPosition(new LogicalPosition(targetX, targetY));
+        await win.setFocus();
+      } catch (err) {
+        console.error('No se pudo expandir la hoja suelta:', err);
+      }
+    }
+    setCollapsed(false);
+    try {
+      localStorage.setItem('folio:capture:collapsed', 'false');
+    } catch {}
+    setTimeout(() => areaRef.current?.focus(), 60);
+  }, []);
+
+  const collapse = useCallback(async () => {
+    if (busy.current || settled.current) return;
+    if (isTauri) {
+      try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        const scale = await win.scaleFactor();
+        const logX = scale > 0 ? pos.x / scale : pos.x;
+        const logY = scale > 0 ? pos.y / scale : pos.y;
+
+        try {
+          localStorage.setItem(
+            'folio:capture:pos:expanded',
+            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+          );
+        } catch {}
+
+        let targetX = Math.round(logX + EXPANDED_WIDTH - COLLAPSED_SIZE);
+        let targetY = Math.round(logY);
+        try {
+          const savedDock = localStorage.getItem('folio:capture:pos:collapsed');
+          if (savedDock) {
+            const parsed = JSON.parse(savedDock);
+            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+              targetX = parsed.x;
+              targetY = parsed.y;
+            }
+          }
+        } catch {}
+
+        await win.setSize(new LogicalSize(COLLAPSED_SIZE, COLLAPSED_SIZE));
+        await win.setPosition(new LogicalPosition(targetX, targetY));
+      } catch (err) {
+        console.error('No se pudo colapsar la hoja suelta:', err);
+      }
+    }
+    setCollapsed(true);
+    try {
+      localStorage.setItem('folio:capture:collapsed', 'true');
+    } catch {}
+  }, []);
+
+  const togglePin = () => {
+    setPinned((curr) => {
+      const next = !curr;
+      try {
+        localStorage.setItem('folio:capture:pinned', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!isTauri) return;
+    const initWindow = async () => {
+      try {
+        const win = getCurrentWindow();
+        if (collapsedRef.current) {
+          await win.setSize(new LogicalSize(COLLAPSED_SIZE, COLLAPSED_SIZE));
+          const savedDock = localStorage.getItem('folio:capture:pos:collapsed');
+          if (savedDock) {
+            const { x, y } = JSON.parse(savedDock);
+            await win.setPosition(new LogicalPosition(x, y));
+          }
+        } else {
+          const savedExp = localStorage.getItem('folio:capture:pos:expanded');
+          if (savedExp) {
+            const { x, y } = JSON.parse(savedExp);
+            await win.setPosition(new LogicalPosition(x, y));
+          }
+        }
+      } catch {}
+    };
+    void initWindow();
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let timer: number | null = null;
+    const unlisten = getCurrentWindow().onMoved(async ({ payload: pos }) => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        try {
+          const win = getCurrentWindow();
+          const scale = await win.scaleFactor();
+          const logX = scale > 0 ? pos.x / scale : pos.x;
+          const logY = scale > 0 ? pos.y / scale : pos.y;
+          const key = collapsedRef.current ? 'folio:capture:pos:collapsed' : 'folio:capture:pos:expanded';
+          localStorage.setItem(key, JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }));
+        } catch {}
+      }, 250);
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let blurTimer: number | null = null;
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        if (blurTimer) {
+          window.clearTimeout(blurTimer);
+          blurTimer = null;
+        }
+      } else {
+        if (!pinnedRef.current && !collapsedRef.current && !discardingRef.current && !busy.current) {
+          blurTimer = window.setTimeout(() => {
+            if (!pinnedRef.current && !collapsedRef.current && !discardingRef.current && !busy.current) {
+              void collapse();
+            }
+          }, 200);
+        }
+      }
+    });
+    return () => {
+      if (blurTimer) window.clearTimeout(blurTimer);
+      void unlisten.then((stop) => stop());
+    };
+  }, [collapse]);
 
   // Si la ventana se cierra por otro lado (Alt + F4), lo escrito se guarda igual: el pie
   // dice que al cerrarla queda en el cuaderno. Tauri espera a que esto termine antes de
@@ -163,11 +400,59 @@ export function CaptureWindow() {
           return kept.trim() ? `${kept}\n\n${entry}` : entry;
         });
         setDiscarding(false);
+        if (collapsedRef.current) {
+          void expand();
+        }
       });
     };
     pullSeed();
     return api.onCaptureSeed(pullSeed);
-  }, []);
+  }, [expand]);
+
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const wasDraggedRef = useRef(false);
+  const windowStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleDockPointerDown = async (e: React.PointerEvent) => {
+    pointerStartRef.current = { x: e.screenX, y: e.screenY };
+    wasDraggedRef.current = false;
+    if (isTauri) {
+      try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        windowStartPosRef.current = { x: pos.x, y: pos.y };
+      } catch {}
+    }
+  };
+
+  const handleDockPointerMove = (e: React.PointerEvent) => {
+    if (pointerStartRef.current) {
+      const dist = Math.hypot(e.screenX - pointerStartRef.current.x, e.screenY - pointerStartRef.current.y);
+      if (dist > 5) {
+        wasDraggedRef.current = true;
+      }
+    }
+  };
+
+  const handleDockClick = async (e: React.MouseEvent) => {
+    if (wasDraggedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (isTauri && windowStartPosRef.current) {
+      try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        const dx = Math.abs(pos.x - windowStartPosRef.current.x);
+        const dy = Math.abs(pos.y - windowStartPosRef.current.y);
+        if (dx > 4 || dy > 4) {
+          return;
+        }
+      } catch {}
+    }
+    void expand();
+  };
 
   const discard = () => {
     // Sin nada escrito no hay nada que perder: se cierra directo.
@@ -198,6 +483,39 @@ export function CaptureWindow() {
     return () => document.removeEventListener('keydown', onKey);
   }, [finish, discarding]);
 
+  if (collapsed) {
+    const hasContent = Boolean(text.trim() || title.trim());
+    const preview = title.trim() || titleFromContent(text);
+    const dockTooltip = hasContent
+      ? `${t('Hoja suelta')}${preview ? `: ${preview}` : ''}\n${t('Clic para expandir')}`
+      : `${t('Hoja suelta')}\n${t('Clic para expandir')}`;
+
+    return (
+      <div
+        className="loose-dock"
+        data-tauri-drag-region
+        onPointerDown={handleDockPointerDown}
+        onPointerMove={handleDockPointerMove}
+        onClick={handleDockClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            void expand();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={t('Expandir hoja suelta')}
+        title={dockTooltip}
+      >
+        <div className="loose-dock-inner" data-tauri-drag-region>
+          <FileText size={20} className="loose-dock-icon" />
+          {hasContent && <span className="loose-dock-badge" aria-hidden="true" />}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="loose">
       <header className="loose-head capture-head" data-tauri-drag-region>
@@ -224,6 +542,28 @@ export function CaptureWindow() {
                 </button>
               );
             })()}
+            <button
+              type="button"
+              className={`icon-button icon-btn small capture-pin-btn${pinned ? ' pinned' : ''}`}
+              onClick={togglePin}
+              aria-label={pinned ? t('Desfijar hoja (se colapsa al cambiar de ventana)') : t('Fijar expandida')}
+              title={
+                pinned
+                  ? t('Desfijar hoja (se colapsa al cambiar de ventana)')
+                  : t('Fijar expandida para comparar con otras ventanas')
+              }
+            >
+              <Pin size={13} />
+            </button>
+            <button
+              type="button"
+              className="icon-button icon-btn small capture-collapse-btn"
+              onClick={() => void collapse()}
+              aria-label={t('Colapsar hoja')}
+              title={t('Colapsar en el dock')}
+            >
+              <Minimize2 size={13} />
+            </button>
             <time dateTime={new Date(born).toISOString()}>{timeOf(born)}</time>
           </div>
         </div>
