@@ -156,6 +156,10 @@ export const notebook: Record<string, string> = {
   // App.tsx
   'Sin hojas hoy': 'No sheets today',
   'Las hojas que crees o edites hoy aparecen acá.': 'Sheets you create or edit today appear here.',
+  'Sin hojas fijas': 'No pinned sheets',
+  'Fijá cualquier hoja desde su encabezado para tenerla siempre a mano acá.': 'Pin any sheet from its header to keep it always at hand here.',
+  Fijas: 'Pinned',
+  Recortes: 'Clippings',
   'Escribí en el Bloc de notas o guardá un .txt o .md: va a aparecer acá solo.':
     'Write in Notepad or save a .txt or .md: it will appear here on its own.',
   'Todo tiene categoría': 'Everything has a category',

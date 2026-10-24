@@ -1062,7 +1062,7 @@ mod tests {
     #[test]
     fn las_categorias_de_la_base_tampoco_se_vuelven_a_proponer() {
         let db = database(&notebook());
-        // De fábrica hay una categoría «Compras»: el tema de las compras no se propone.
+        db.create_category("Compras", "Listas de compras", "#34C759").unwrap();
         assert!(db.categories().unwrap().iter().any(|category| category.name == "Compras"));
         assert!(!names(&from_db(&db).unwrap()).contains(&"Comprar"));
         db.create_category("Recetas", "Cocina", "#FF9500").unwrap();

@@ -148,6 +148,7 @@ export interface NotebookTab {
   color: string;
   ink: string;
   icon?: ReactNode;
+  colorOnly?: boolean;
   /** Va agrupada a la derecha (secret-book, papelera). */
   atEnd?: boolean;
 }
@@ -190,12 +191,12 @@ function Tabs(props: { tabs: NotebookTab[]; view: View; onView: (view: View) => 
             aria-selected={active}
             aria-label={t('Ver {label}', { label: tab.label })}
             title={`${tab.label}, ${plural(tab.count, 'hoja', 'hojas')}`}
-            className={`tab${active ? ' active' : ''}${tab.atEnd ? ' at-end' : ''}${tab.icon ? ' icon-only' : ''}`}
+            className={`tab${active ? ' active' : ''}${tab.atEnd ? ' at-end' : ''}${tab.icon ? ' icon-only' : ''}${tab.colorOnly ? ' color-only' : ''}`}
             style={{ background: tab.color, color: tab.ink }}
             // Volver a tocar la solapa activa quita el filtro.
             onClick={() => props.onView(active && tab.view.kind !== 'all' ? { kind: 'all' } : tab.view)}
           >
-            {tab.icon ?? <span className="tab-name">{tab.label}</span>}
+            {tab.icon ?? (tab.colorOnly ? null : <span className="tab-name">{tab.label}</span>)}
           </button>
         );
       })}
