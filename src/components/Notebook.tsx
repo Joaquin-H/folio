@@ -181,8 +181,61 @@ function summaryOf(detail: SheetDetail): SheetSummary {
 
 function Tabs(props: { tabs: NotebookTab[]; view: View; onView: (view: View) => void }) {
   const t = useT();
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef<{ x: number; scrollLeft: number } | null>(null);
+  const isDraggingRef = useRef(false);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const container = tabsRef.current;
+    if (!container) return;
+    const isOverflow = container.scrollWidth > container.clientWidth;
+    if (isOverflow) {
+      dragStartRef.current = { x: e.clientX, scrollLeft: container.scrollLeft };
+      isDraggingRef.current = false;
+    } else if (!(e.target as Element).closest('button, a, input')) {
+      api.window.drag();
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStartRef.current || !tabsRef.current) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    if (Math.abs(dx) > 4) {
+      isDraggingRef.current = true;
+      tabsRef.current.scrollLeft = dragStartRef.current.scrollLeft - dx;
+    }
+  };
+
+  const handlePointerUp = () => {
+    dragStartRef.current = null;
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 50);
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const container = tabsRef.current;
+    if (!container) return;
+    if (container.scrollWidth > container.clientWidth) {
+      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      container.scrollLeft += delta;
+    }
+  };
+
   return (
-    <div className="tabs" role="tablist" aria-label={t('Filtrar el cuaderno por categoría')} data-tauri-drag-region data-tour="tabs">
+    <div
+      ref={tabsRef}
+      className="tabs"
+      role="tablist"
+      aria-label={t('Filtrar el cuaderno por categoría')}
+      data-tour="tabs"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onWheel={handleWheel}
+    >
       {props.tabs.map((tab) => {
         const active = sameView(tab.view, props.view);
         return (
@@ -196,7 +249,10 @@ function Tabs(props: { tabs: NotebookTab[]; view: View; onView: (view: View) => 
             className={`tab${active ? ' active' : ''}${tab.atEnd ? ' at-end' : ''}${tab.icon ? ' icon-only' : ''}${tab.colorOnly ? ' color-only' : ''}`}
             style={{ background: tab.color, color: tab.ink }}
             // Volver a tocar la solapa activa quita el filtro.
-            onClick={() => props.onView(active && tab.view.kind !== 'all' ? { kind: 'all' } : tab.view)}
+            onClick={() => {
+              if (isDraggingRef.current) return;
+              props.onView(active && tab.view.kind !== 'all' ? { kind: 'all' } : tab.view);
+            }}
           >
             {tab.icon ?? (tab.colorOnly ? null : <span className="tab-name">{tab.label}</span>)}
           </button>
@@ -290,8 +346,19 @@ function PageButtons(props: {
     </div>
   );
 
+  const onBarMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 0 && !(e.target as Element).closest('button, input, textarea, a, [role="button"], [role="menuitem"], .menu-list')) {
+      api.window.drag();
+    }
+  };
+
   const actions = (
-    <div className="page-actions" data-tour="actions">
+    <div
+      className="page-actions"
+      data-tour="actions"
+      data-tauri-drag-region
+      onMouseDown={onBarMouseDown}
+    >
       <button
         type="button"
         className="icon-button"
@@ -332,7 +399,12 @@ function PageButtons(props: {
 
   if (isSingle) {
     return (
-      <div className="page-bar single" style={{ left: leftEdge, right: 8 }}>
+      <div
+        className="page-bar single"
+        style={{ left: leftEdge, right: 8 }}
+        data-tauri-drag-region
+        onMouseDown={onBarMouseDown}
+      >
         {controls}
         {props.banner}
         {actions}
@@ -348,6 +420,8 @@ function PageButtons(props: {
           left: leftEdge,
           width: props.geometry.pageWidth - leftEdge - 8,
         }}
+        data-tauri-drag-region
+        onMouseDown={onBarMouseDown}
       >
         {controls}
         {props.banner}
@@ -2198,13 +2272,15 @@ export function Notebook(props: {
    * giro. Escribiendo no sale de la nota: un toque de más no termina la escritura.
    */
   const onWheel = (event: WheelEvent) => {
-    if (fromOutside(event) || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    if (fromOutside(event) || event.ctrlKey) return;
     const state = wheel.current;
     const at = performance.now();
     if (at - state.last > WHEEL_PAUSE) state.sum = 0;
     state.last = at;
     if (at < state.free) return;
-    state.sum += event.deltaY;
+    const effectiveDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (Math.abs(effectiveDelta) === 0) return;
+    state.sum += effectiveDelta;
     if (Math.abs(state.sum) < WHEEL_STEP) return;
     const delta = state.sum > 0 ? 1 : -1;
     state.sum = 0;
@@ -2329,14 +2405,22 @@ export function Notebook(props: {
 
   return (
     // La letra se mide acá, en el mismo dibujo que la geometría de las páginas.
-    <div className={`stage${props.tabs ? '' : ' no-tabs'}`} style={textVars(textSize)} data-tauri-drag-region>
+    <div
+      className={`stage${props.tabs ? '' : ' no-tabs'}`}
+      style={textVars(textSize)}
+      data-tauri-drag-region
+      onMouseDown={(e) => {
+        if (e.button === 0 && !(e.target as Element).closest('.book, button, a, input, textarea, .menu-list, [role="button"], [role="menuitem"]')) {
+          api.window.drag();
+        }
+      }}
+    >
       <div
         className={`book ${spread}${closed ? ' closed' : ''}`}
         style={{ width: props.book.width, height: props.book.height }}
         // Qué cara se ve y en qué mitad del giro va, para darlo vuelta (styles/cover.css).
         data-face={closed ? face : undefined}
         data-flip={(closed && faces.flip) || undefined}
-        data-tauri-drag-region
       >
         {props.tabs && <Tabs tabs={props.tabs} view={props.view} onView={onView} />}
         {spread === 'single' && <Spiral />}

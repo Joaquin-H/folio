@@ -738,6 +738,67 @@ mod tests {
         assert!((c2.y - c1.y).abs() >= FLOATING_COLLAPSED_SIZE);
         assert!((c3.y - c2.y).abs() >= FLOATING_COLLAPSED_SIZE);
     }
+
+    #[test]
+    fn anclaje_espacial_insitu_al_colapsar_hoja_flotante_tras_moverla() {
+        // Usuario expande una hoja, la mueve a (200, 150) en la mitad izquierda de la pantalla.
+        // Al colapsar, el icono debe anclarse in-situ en (200, 150), ignorando la posición vieja guardada (1400, 120).
+        let c_left = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            200.0,
+            150.0,
+            FLOATING_EXPANDED_W,
+            true,
+            Some(1400.0),
+            Some(120.0),
+            &[],
+        );
+        assert_eq!(c_left.x, 200.0);
+        assert_eq!(c_left.y, 150.0);
+        assert_eq!(c_left.width, FLOATING_COLLAPSED_SIZE);
+        assert_eq!(c_left.height, FLOATING_COLLAPSED_SIZE);
+
+        // Si la movió a la mitad derecha (x = 1200, y = 250), al colapsar se ancla en su esquina superior derecha
+        // (1200 + 440 - 52 = 1588, 250), respetando in-situ la nueva posición.
+        let c_right = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            1200.0,
+            250.0,
+            FLOATING_EXPANDED_W,
+            true,
+            Some(100.0),
+            Some(80.0),
+            &[],
+        );
+        assert_eq!(c_right.x, 1200.0 + FLOATING_EXPANDED_W - FLOATING_COLLAPSED_SIZE);
+        assert_eq!(c_right.y, 250.0);
+
+        // Al expandir desde esa posición colapsada (1588, 250), debe abrir hacia la izquierda (porque está en la derecha)
+        // manteniendo anclado el borde derecho en 1588 + 52 = 1640, expandiendo a x = 1200.
+        let exp = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            c_right.x,
+            c_right.y,
+            FLOATING_COLLAPSED_SIZE,
+            false,
+            None,
+            None,
+            &[],
+        );
+        assert_eq!(exp.x, 1200.0);
+        assert_eq!(exp.y, 250.0);
+        assert_eq!(exp.width, FLOATING_EXPANDED_W);
+        assert_eq!(exp.height, FLOATING_EXPANDED_H);
+    }
 }
 
 /// Fija de una sola vez la posición y el tamaño de la ventana (borde exterior, en
@@ -838,11 +899,11 @@ pub(crate) fn compute_floating_rect(
         let max_y = (bottom - s).max(min_y);
 
         let was_expanded = current_w > FLOATING_COLLAPSED_SIZE + 20.0;
-        let (raw_x, raw_y) = if let (Some(sx), Some(sy)) = (saved_x, saved_y) {
-            (sx, sy)
-        } else if was_expanded {
-            // Si la hoja expandida está en la mitad derecha de la pantalla, colapsa hacia su borde derecho;
-            // si está en la mitad izquierda, colapsa hacia su borde izquierdo.
+        let (raw_x, raw_y) = if was_expanded {
+            // Anclaje espacial in-situ: el usuario movió la ventana expandida y al colapsar
+            // debe anclarse en la zona actual de la ventana expandida (esquina superior derecha
+            // si está en la mitad derecha de la pantalla, o esquina superior izquierda si está en la mitad izquierda),
+            // ignorando posiciones viejas guardadas previas al movimiento.
             let center_x = current_x + current_w / 2.0;
             let tx = if center_x > mid_x {
                 current_x + current_w - s
@@ -850,6 +911,8 @@ pub(crate) fn compute_floating_rect(
                 current_x
             };
             (tx, current_y)
+        } else if let (Some(sx), Some(sy)) = (saved_x, saved_y) {
+            (sx, sy)
         } else {
             (current_x, current_y)
         };

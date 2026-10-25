@@ -377,6 +377,12 @@ export function Cover(props: {
       ref={setRoot}
       className={`cover ${face}${props.leaving ? ' leaving' : ''}${arranging ? ' arranging' : ''}${dropping ? ' dropping' : ''}`}
       data-cover-style={props.skin}
+      data-tauri-drag-region={arranging ? undefined : ''}
+      onMouseDown={(event) => {
+        if (event.button === 0 && !arranging && !interactive(event.target)) {
+          api.window.drag();
+        }
+      }}
       onPointerDown={(event) => {
         dragged.current = false;
         press.current = arranging || interactive(event.target) ? null : { x: event.clientX, y: event.clientY };
@@ -384,7 +390,7 @@ export function Cover(props: {
       onPointerMove={(event) => {
         const start = press.current;
         if (!start || dragged.current || !(event.buttons & 1)) return;
-        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) {
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4) {
           dragged.current = true;
           api.window.drag();
         }
