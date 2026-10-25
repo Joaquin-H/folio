@@ -155,6 +155,8 @@ export interface Api {
   onQuitRequested(handler: () => Promise<void>): () => void;
   /** Avisa cuando el Book cambió. Devuelve la función para dejar de escuchar. */
   onChanged(callback: () => void): () => void;
+  /** Avisa cuando un recorte se guardó exitosamente o hubo feedback de captura. */
+  onClippingSaved(callback: (payload: { name: string; title: string; body: string; message: string }) => void): () => void;
   /** Avisa cuando un agente o comando externo pidió abrir el mapa del cuaderno. */
   onOpenMap(callback: () => void): () => void;
   /** Avisa cuando un agente o comando externo pidió abrir una hoja concreta en el cuaderno. */
@@ -274,6 +276,10 @@ const tauriApi: Api = {
   },
   onChanged(callback) {
     const unlisten = listen('book:changed', callback);
+    return () => void unlisten.then((stop) => stop());
+  },
+  onClippingSaved(callback) {
+    const unlisten = listen<{ name: string; title: string; body: string; message: string }>('book:clipping-saved', ({ payload }) => callback(payload));
     return () => void unlisten.then((stop) => stop());
   },
   onOpenMap(callback) {

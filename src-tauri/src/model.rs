@@ -43,7 +43,7 @@ pub struct SheetDetail {
     pub versions: Vec<Version>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ListFilter {
     /// "all" | "today" | "pinned" | "uncategorized" | "secret" | "hidden" | "category"

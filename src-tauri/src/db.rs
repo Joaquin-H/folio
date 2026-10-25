@@ -1026,6 +1026,28 @@ impl Db {
         if let Some(wanted) = frontmatter::category(&inc.content) {
             header_category(&tx, id, &wanted)?;
         }
+
+        // Si es un recorte escrito desde Folio (recortes-YYYY-MM-DD.txt, etc.), asegura SIEMPRE que category_id
+        // quede asignado a la categoría Recortes (incluso si la hoja ya existía con category_id = NULL)
+        // y actualiza modified_at para que aparezca primera tanto en Recortes como en Hoy.
+        if !adopt && Self::is_reliable_clipping(&inc.title, inc.path.as_deref(), &inc.content, inc.source, None) {
+            let clip_cat_id = Self::ensure_clippings_category_conn(&tx)?;
+            let current_cat: Option<i64> = tx
+                .query_row("SELECT category_id FROM sheets WHERE id = ?1", [id], |r| r.get(0))
+                .optional()?
+                .flatten();
+            if current_cat.is_none() || current_cat == Some(clip_cat_id) {
+                tx.execute(
+                    "UPDATE sheets SET category_id = ?1, category_source = 'auto', modified_at = ?2 WHERE id = ?3",
+                    params![clip_cat_id, now, id],
+                )?;
+            } else {
+                tx.execute(
+                    "UPDATE sheets SET modified_at = ?1 WHERE id = ?2",
+                    params![now, id],
+                )?;
+            }
+        }
         tx.commit()?;
         Ok(outcome)
     }
@@ -1691,8 +1713,7 @@ impl Db {
     /// Si existe una guardada en los ajustes (`clippings_category_id`), se respeta aunque
     /// haya sido renombrada o cambiado de color. Si no, busca una existente llamada
     /// "Recortes" o "Clippings". Si no existe ninguna, la crea automáticamente.
-    pub fn ensure_clippings_category(&self) -> rusqlite::Result<i64> {
-        let conn = self.lock();
+    pub fn ensure_clippings_category_conn(conn: &Connection) -> rusqlite::Result<i64> {
         // 1. Si hay un ID guardado en ajustes, verificar si existe en la base.
         if let Some(id_str) = conn
             .query_row(
@@ -1784,6 +1805,22 @@ impl Db {
             [id.to_string()],
         )?;
         Ok(id)
+    }
+
+    pub fn ensure_clippings_category(&self) -> rusqlite::Result<i64> {
+        let conn = self.lock();
+        Self::ensure_clippings_category_conn(&conn)
+    }
+
+    /// Actualiza `modified_at` y `last_change_at` al instante actual para que la hoja aparezca primera en Hoy.
+    pub fn touch_sheet(&self, id: i64) -> rusqlite::Result<()> {
+        let now = now_ms();
+        let conn = self.lock();
+        conn.execute(
+            "UPDATE sheets SET modified_at = ?1, last_change_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+        Ok(())
     }
 
     pub fn clippings_category_id(&self) -> Option<i64> {
@@ -3010,6 +3047,38 @@ mod tests {
         // Si se vuelve a correr, ya no hay nada que migrar
         let migrated_again = db.migrate_clippings(None).unwrap();
         assert_eq!(migrated_again, 0);
+    }
+
+    #[test]
+    fn crear_o_agregar_recorte_asigna_categoria_recortes_y_actualiza_modified_at() {
+        let db = db();
+        let cat_id = db.ensure_clippings_category().unwrap();
+
+        // 1. Hoja del día ya existía con category_id = NULL y modified_at antiguo
+        let mut sheet_old = incoming("file", "/notas/recortes-2026-10-25.txt", "texto viejo");
+        sheet_old.modified_at = 1000;
+        sheet_old.created_at = 1000;
+        db.upsert_sheet(&sheet_old, &session()).unwrap();
+        let id = db.sheet_id("file", "/notas/recortes-2026-10-25.txt").unwrap();
+        assert_eq!(db.sheet_category(id).unwrap(), None);
+
+        // 2. Se agrega un recorte a través de upsert_written
+        let before_now = now_ms();
+        let mut inc_recorte = incoming("file", "/notas/recortes-2026-10-25.txt", "texto viejo\n\n— 15:30 · Chrome\nNuevo recorte");
+        inc_recorte.modified_at = 1000; // simula que filesystem mtime no se actualizó aún
+        db.upsert_written(&inc_recorte, &session()).unwrap();
+
+        // 3. Verifica que category_id quedó asignado a Recortes y modified_at se actualizó a tiempo reciente
+        assert_eq!(db.sheet_category(id).unwrap(), Some(cat_id));
+        let modified = db.lock().query_row("SELECT modified_at FROM sheets WHERE id = ?1", [id], |r| r.get::<_, i64>(0)).unwrap();
+        assert!(modified >= before_now);
+
+        // 4. Verifica que aparece primera en Recortes y en Hoy
+        let today_sheets = db.list_sheets(&ListFilter { view: "today".into(), ..Default::default() }).unwrap();
+        assert_eq!(today_sheets.first().map(|s| s.id), Some(id));
+
+        let clippings_sheets = db.list_sheets(&ListFilter { view: "category".into(), category_id: Some(cat_id), ..Default::default() }).unwrap();
+        assert_eq!(clippings_sheets.first().map(|s| s.id), Some(id));
     }
 
     #[test]

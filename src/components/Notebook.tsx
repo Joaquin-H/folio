@@ -483,6 +483,7 @@ function OpenSheet(props: {
   markdown: boolean;
   hideHeader?: boolean;
   centerTitle?: boolean;
+  revision?: number;
 
   onPageTurn?: (delta: 1 | -1) => void;
   /** Salta de hoja entera. */
@@ -513,7 +514,7 @@ function OpenSheet(props: {
   // Los menús y los botones muestran las combinaciones vigentes: si cambian, se redibujan.
   useShortcuts();
   const isDraft = sheet.id === DRAFT;
-  const detail = useSheetDetail(sheet, !isDraft);
+  const detail = useSheetDetail(sheet, !isDraft, props.revision);
   const [showVersions, setShowVersions] = useState(false);
   const { categoryItems, moreItems, error, restore, togglePinned, tearOff, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
   const [head, headSize] = useSize<HTMLElement>();
@@ -2500,6 +2501,7 @@ export function Notebook(props: {
                   onBack={away ? backToAll : undefined}
                   onOpenMap={() => setMapOpen(true)}
                   noteFormat={noteFormat}
+                  revision={props.revision}
                   actions={props.actions}
                   menuBefore={pageMenu}
                   menuAfter={props.menuAfter}
