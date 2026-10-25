@@ -1642,6 +1642,18 @@ export function Notebook(props: {
     nudge(null);
   }, [nudge]);
 
+  /** Dónde se apretó sobre las hojas y si eso puede terminar siendo un deslizamiento. */
+  const press = useRef<{ x: number; y: number; swipe: boolean } | null>(null);
+  const drag = useRef({ selecting: false, direction: 0 as 0 | 1 | -1, timer: 0 });
+  const wheel = useRef({ sum: 0, last: 0, free: 0 });
+
+  const stopHold = useCallback(() => {
+    window.clearTimeout(drag.current.timer);
+    drag.current.timer = 0;
+    drag.current.direction = 0;
+    drag.current.selecting = false;
+  }, []);
+
   const sheets = useMemo(
     () => (pinned && !items.some((item) => item.id === pinned.sheet.id) ? [pinned.sheet, ...items] : items),
     [items, pinned],
@@ -1778,7 +1790,13 @@ export function Notebook(props: {
   const setClosed = useCallback(
     (next: boolean, _quiet = false) => {
       if (next === closed) return;
-      if (next) void finishWriting();
+      if (next) {
+        void finishWriting();
+        cancelTurn();
+        stopHold();
+        press.current = null;
+        coverBusy.current = false;
+      }
       window.clearTimeout(timers.current.swap);
       setSwapping(true);
       timers.current.swap = window.setTimeout(() => {
@@ -1786,7 +1804,7 @@ export function Notebook(props: {
         setSwapping(false);
       }, COVER_OUT);
     },
-    [closed, onClosed, finishWriting],
+    [closed, onClosed, finishWriting, cancelTurn, stopHold],
   );
 
   // Cerrado, el cuaderno tiene dos caras: la tapa y la contratapa.
@@ -1800,12 +1818,24 @@ export function Notebook(props: {
   /** Cierra el cuaderno dejando a la vista esa cara. */
   const closeTo = useCallback(
     (side: Face) => {
+      cancelTurn();
+      stopHold();
+      press.current = null;
       closedOn.current = side;
       showFace(side);
       setClosed(true);
     },
-    [showFace, setClosed],
+    [showFace, setClosed, cancelTurn, stopHold],
   );
+
+  useEffect(() => {
+    if (closed) {
+      cancelTurn();
+      stopHold();
+      press.current = null;
+      coverBusy.current = false;
+    }
+  }, [closed, cancelTurn, stopHold]);
 
   /**
    * Abre el cuaderno por la cara que se está viendo. Por la contratapa, siempre en la
@@ -1849,8 +1879,8 @@ export function Notebook(props: {
     (delta: 1 | -1, selecting = false, within = false): boolean => {
       const direction: Direction = delta > 0 ? 'next' : 'prev';
       if (closed) {
-        // Cerrado se abre hacia adentro: desde la tapa, avanzando; desde la contratapa, volviendo.
-        const opens = !coverBusy.current && (face === 'back' ? delta < 0 : delta > 0);
+        // Cerrado se abre hacia adentro: desde la tapa o contratapa, cualquier intento de pasar de página lo abre.
+        const opens = !coverBusy.current;
         if (opens) openBook();
         return opens;
       }
@@ -1919,7 +1949,7 @@ export function Notebook(props: {
     (delta: 1 | -1): boolean => {
       const direction: Direction = delta > 0 ? 'next' : 'prev';
       if (closed) {
-        const opens = !coverBusy.current && (face === 'back' ? delta < 0 : delta > 0);
+        const opens = !coverBusy.current;
         if (opens) openBook();
         return opens;
       }
@@ -2124,17 +2154,6 @@ export function Notebook(props: {
   }, [away, backToAll]);
 
   // ---- clic en los bordes, deslizar y selección que sigue en la hoja siguiente ----
-
-  /** Dónde se apretó sobre las hojas y si eso puede terminar siendo un deslizamiento. */
-  const press = useRef<{ x: number; y: number; swipe: boolean } | null>(null);
-  const drag = useRef({ selecting: false, direction: 0 as 0 | 1 | -1, timer: 0 });
-  const wheel = useRef({ sum: 0, last: 0, free: 0 });
-
-  const stopHold = useCallback(() => {
-    window.clearTimeout(drag.current.timer);
-    drag.current.timer = 0;
-    drag.current.direction = 0;
-  }, []);
 
   // Lo que entra después de pasar página llega derecho a su lugar: el corrimiento del
   // deslizamiento era de lo que se fue.
@@ -2408,7 +2427,7 @@ export function Notebook(props: {
     <div
       className={`stage${props.tabs ? '' : ' no-tabs'}`}
       style={textVars(textSize)}
-      data-tauri-drag-region
+      data-tauri-drag-region={closed ? undefined : ''}
       onMouseDown={(e) => {
         if (e.button === 0 && !(e.target as Element).closest('.book, button, a, input, textarea, .menu-list, [role="button"], [role="menuitem"]')) {
           api.window.drag();

@@ -2983,15 +2983,21 @@ html[data-window='tearoff'] body {
 }
 
 .loose-dock-inner {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
-  padding-left: 4px;
+  padding: 0;
+  margin: 0;
   color: var(--label-2);
   transition: color 0.15s ease;
   pointer-events: none;
+}
+
+.loose-dock-icon {
+  flex-shrink: 0;
 }
 
 .loose-dock:hover .loose-dock-inner {
