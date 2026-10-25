@@ -95,6 +95,8 @@ const KEYS = {
   Escape: { code: 'Escape', vk: 27 },
   Tab: { code: 'Tab', vk: 9 },
   Backspace: { code: 'Backspace', vk: 8 },
+  Delete: { code: 'Delete', vk: 46 },
+  Space: { code: 'Space', vk: 32, text: ' ' },
   ArrowLeft: { code: 'ArrowLeft', vk: 37 },
   ArrowUp: { code: 'ArrowUp', vk: 38 },
   ArrowRight: { code: 'ArrowRight', vk: 39 },
@@ -105,6 +107,12 @@ const KEYS = {
   Home: { code: 'Home', vk: 36 },
   F2: { code: 'F2', vk: 113 },
   Shift: { code: 'ShiftLeft', vk: 16 },
+  Comma: { code: 'Comma', vk: 188, text: ',' },
+  ',': { code: 'Comma', vk: 188, text: ',' },
+  Period: { code: 'Period', vk: 190, text: '.' },
+  '.': { code: 'Period', vk: 190, text: '.' },
+  Minus: { code: 'Minus', vk: 189, text: '-' },
+  '-': { code: 'Minus', vk: 189, text: '-' },
 };
 
 function keyInfo(key) {
