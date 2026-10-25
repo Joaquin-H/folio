@@ -299,11 +299,13 @@ function Chips(props: { chips: FilterChip[] }) {
  */
 function TurnZones(props: { geometry: Geometry; canGoOn: boolean }) {
   const { geometry: g } = props;
+  const turnTop = Math.max(TOP + 100, 135);
+  const turnHeight = Math.max(60, g.bodyHeight - (turnTop - TOP));
   return (
     <>
-      <div className="turn-zone prev" style={{ top: TOP, width: g.turnBack, height: g.bodyHeight }} aria-hidden="true" data-tour="turn-prev" />
+      <div className="turn-zone prev" style={{ top: turnTop, width: g.turnBack, height: turnHeight }} aria-hidden="true" data-tour="turn-prev" />
       {props.canGoOn && (
-        <div className="turn-zone next" style={{ top: TOP, width: g.turnOn, height: g.bodyHeight }} aria-hidden="true" data-tour="turn-next" />
+        <div className="turn-zone next" style={{ top: turnTop, width: g.turnOn, height: turnHeight }} aria-hidden="true" data-tour="turn-next" />
       )}
     </>
   );
@@ -1089,7 +1091,7 @@ function OpenSheet(props: {
             {index === 0 && !props.hideHeader && (
               <header
                 ref={head}
-                className={`page-head${props.fading ? ' fading' : ''}${props.centerTitle ? ' centered-title' : ''}${isCompactHeader ? ' compact' : ''}`}
+                className={`page-head page-header${props.fading ? ' fading' : ''}${props.centerTitle ? ' centered-title' : ''}${isCompactHeader ? ' compact' : ''}`}
                 style={{
                   top: TOP,
                   paddingLeft: g.padLeft,
@@ -1097,103 +1099,7 @@ function OpenSheet(props: {
                   visibility: page === 0 ? 'visible' : 'hidden',
                 }}
               >
-                <div className="page-date" data-tauri-drag-region>
-                  <div className="page-meta">
-                    <span className="page-date-main meta-item" data-tauri-drag-region title={`${dateText} ${timeOf(sheet.modifiedAt)}`}>
-                      <span data-tauri-drag-region>{dateText}</span>
-                      <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
-                    </span>
-                    <span className="meta-sep" aria-hidden="true">·</span>
-                    <span className="sheet-chip meta-item" title={props.counter}>
-                      <span className="sheet-indicator-accent" aria-hidden="true" />
-                      <span className="meta-text">{props.counter}</span>
-                    </span>
-                    <span className="page-source meta-item" title={sourceText}>
-                      <Icon size={12} />
-                      <span className="meta-text">{sourceText}</span>
-                    </span>
-                    <Menu
-                      label={t('Cambiar la categoría de esta hoja')}
-                      heading={t('Categoría de esta hoja')}
-                      align="right"
-                      className={`chip meta-btn${category ? '' : ' unset'}`}
-                      items={categoryItems}
-                      trigger={
-                        category ? (
-                          <>
-                            <span className="dot" style={{ background: category.color }} />
-                            <span className="meta-text">{category.name}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="dot unset-dot" />
-                            <span className="meta-text">{t('Sin categoría')}</span>
-                          </>
-                        )
-                      }
-                    />
-                    {sheet.source === 'notepad' && (
-                      <button
-                        type="button"
-                        className="chip meta-btn action-chip"
-                        onClick={() => void saveNotepadToFolio()}
-                        title={t('Guardar esta nota en Folio para poder escribirla')}
-                        aria-label={t('Guardar en Folio')}
-                      >
-                        <FolderDown size={12} />
-                        <span className="meta-text">{t('Guardar en Folio')}</span>
-                      </button>
-                    )}
-                    {!isDraft && (
-                      <>
-                        <button
-                          type="button"
-                          className={`chip meta-btn pin-btn${sheet.pinned ? ' active' : ''}`}
-                          onClick={togglePinned}
-                          aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                          title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                        >
-                          {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-                          <span className="meta-text">{sheet.pinned ? t('Fijada') : t('Fijar')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="chip meta-btn tear-btn"
-                          onClick={() => void (isWriting ? writer.flush() : Promise.resolve()).then(() => tearOff())}
-                          aria-label={t('Arrancar hoja')}
-                          title={tearHint ? `${t('Arrancar hoja')} (${tearHint})` : t('Arrancar hoja')}
-                        >
-                          <ExternalLink size={12} />
-                          <span className="meta-text">{t('Arrancar')}</span>
-                        </button>
-                      </>
-                    )}
-                    {sheet.versionCount > 0 && (
-                      <button
-                        type="button"
-                        className="chip meta-btn"
-                        onClick={() => setShowVersions(true)}
-                        title={versionText}
-                        aria-label={versionText}
-                      >
-                        <History size={12} />
-                        <span className="meta-text">{versionText}</span>
-                      </button>
-                    )}
-                    {front?.source && (
-                      <span className="page-tag source meta-item" title={t('Fuente: {source}', { source: front.source })}>
-                        {AI_SOURCE.test(front.source) ? <Sparkles size={11} /> : <Quote size={11} />}
-                        <span className="meta-text">{front.source}</span>
-                      </span>
-                    )}
-                    {front?.tags.map((tag) => (
-                      <span key={tag} className="page-tag tag meta-item" title={t('Etiqueta: {tag}', { tag })}>
-                        <span className="meta-text">{tag}</span>
-                      </span>
-                    ))}
-                    <SheetBadges sheet={sheet} />
-                  </div>
-                </div>
+                {/* Línea 1: Título (protagonista, editable al hacer clic) */}
                 <div className="page-title-row">
                   {writing && writing.title !== null ? (
                     <label className="page-title editable" title={t('Cambiar el título de la hoja')}>
@@ -1222,9 +1128,124 @@ function OpenSheet(props: {
                     </label>
                   ) : (
                     // Con encabezado, el título es el de la nota; el nombre del archivo queda a mano.
-                    <h2 className="page-title" title={front?.title ? sheet.title : undefined}>
+                    <h2
+                      className="page-title"
+                      title={front?.title ? sheet.title : t('Cambiar el título de la hoja')}
+                      onClick={isWriting ? undefined : () => startWriting(0, true)}
+                    >
                       {front?.title || sheet.title}
                     </h2>
+                  )}
+                </div>
+
+                {/* Línea 2: Fecha · Guardado · Etiqueta/categoría */}
+                <div className="page-date page-meta-row" data-tauri-drag-region>
+                  <div className="page-meta" data-tauri-drag-region>
+                    <span className="page-date-main meta-item" data-tauri-drag-region title={`${dateText} ${timeOf(sheet.modifiedAt)}`}>
+                      <span data-tauri-drag-region>{dateText}</span>
+                      <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
+                    </span>
+                    <span className="meta-sep" aria-hidden="true">·</span>
+                    <span className="sheet-chip meta-item" title={props.counter}>
+                      <span className="sheet-indicator-accent" aria-hidden="true" />
+                      <span className="meta-text">{props.counter}</span>
+                    </span>
+                    <span className="meta-sep" aria-hidden="true">·</span>
+                    <span className="page-source meta-item" title={sourceText}>
+                      <Icon size={12} />
+                      <span className="meta-text">{sourceText}</span>
+                    </span>
+                    <span className="meta-sep" aria-hidden="true">·</span>
+                    <Menu
+                      label={t('Cambiar la categoría de esta hoja')}
+                      heading={t('Categoría de esta hoja')}
+                      align="left"
+                      className={`chip meta-btn category-chip${category ? '' : ' unset'}`}
+                      items={categoryItems}
+                      trigger={
+                        category ? (
+                          <>
+                            <span className="dot" style={{ background: category.color }} />
+                            <span className="meta-text">{category.name}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="dot unset-dot" />
+                            <span className="meta-text">{t('Sin categoría')}</span>
+                          </>
+                        )
+                      }
+                    />
+                    {front?.source && (
+                      <>
+                        <span className="meta-sep" aria-hidden="true">·</span>
+                        <span className="page-tag source meta-item" title={t('Fuente: {source}', { source: front.source })}>
+                          {AI_SOURCE.test(front.source) ? <Sparkles size={11} /> : <Quote size={11} />}
+                          <span className="meta-text">{front.source}</span>
+                        </span>
+                      </>
+                    )}
+                    {front?.tags.map((tag) => (
+                      <span key={tag} className="meta-tag-wrap" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <span className="meta-sep" aria-hidden="true">·</span>
+                        <span className="page-tag tag meta-item" title={t('Etiqueta: {tag}', { tag })}>
+                          <span className="meta-text">{tag}</span>
+                        </span>
+                      </span>
+                    ))}
+                    <SheetBadges sheet={sheet} />
+                  </div>
+                </div>
+
+                {/* Línea 3: Acciones */}
+                <div className="page-actions-row">
+                  {sheet.source === 'notepad' && (
+                    <button
+                      type="button"
+                      className="chip meta-btn action-chip"
+                      onClick={() => void saveNotepadToFolio()}
+                      title={t('Guardar esta nota en Folio para poder escribirla')}
+                      aria-label={t('Guardar en Folio')}
+                    >
+                      <FolderDown size={12} />
+                      <span className="meta-text">{t('Guardar en Folio')}</span>
+                    </button>
+                  )}
+                  {!isDraft && (
+                    <>
+                      <button
+                        type="button"
+                        className={`chip meta-btn pin-btn${sheet.pinned ? ' active' : ''}`}
+                        onClick={togglePinned}
+                        aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                        title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                      >
+                        {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                        <span className="meta-text">{sheet.pinned ? t('Fijada') : t('Fijar')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="chip meta-btn tear-btn"
+                        onClick={() => void (isWriting ? writer.flush() : Promise.resolve()).then(() => tearOff())}
+                        aria-label={t('Arrancar hoja')}
+                        title={tearHint ? `${t('Arrancar hoja')} (${tearHint})` : t('Arrancar hoja')}
+                      >
+                        <ExternalLink size={12} />
+                        <span className="meta-text">{t('Arrancar')}</span>
+                      </button>
+                    </>
+                  )}
+                  {sheet.versionCount > 0 && (
+                    <button
+                      type="button"
+                      className="chip meta-btn versions-btn"
+                      onClick={() => setShowVersions(true)}
+                      title={versionText}
+                      aria-label={versionText}
+                    >
+                      <History size={12} />
+                      <span className="meta-text">{versionText}</span>
+                    </button>
                   )}
                 </div>
                 {error && <p className="page-error">{error}</p>}

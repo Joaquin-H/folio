@@ -397,6 +397,7 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 
 .page {
   position: relative;
+  z-index: 10;
   min-width: 0;
   background: var(--paper);
   transition: background-color 0.25s ease;
@@ -571,10 +572,12 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 
 /* Encabezado de la nota: tapa el rayado de los renglones que ocupa. Deja pasar los
    clics a la hoja salvo en sus propios controles. */
-.page-head {
+.page-head,
+.page-header {
   position: absolute;
   right: 0;
   left: 0;
+  z-index: 20;
   padding-bottom: 6px;
   background: inherit;
   pointer-events: none;
@@ -583,23 +586,55 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 }
 
 .page-head.fading,
+.page-header.fading,
 .flow-clip.fading {
   opacity: 0;
 }
 
 .page-head button,
 .page-head .menu,
-.page-title {
+.page-head .chip,
+.page-head .page-title,
+.page-header button,
+.page-header .menu,
+.page-header .chip,
+.page-header .page-title {
   pointer-events: auto;
+  position: relative;
+  z-index: 20;
 }
 
+/* Línea 1: Título (protagonista, editable al hacer clic) */
+.page-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  min-width: 0;
+  margin-top: 1px;
+}
+
+.page-title {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+  cursor: pointer;
+}
+
+/* Línea 2: Fecha · Guardado · Etiqueta/categoría */
 .page-date {
   display: flex;
-  flex-wrap: wrap;
-  gap: 3px 8px;
   align-items: center;
-  justify-content: flex-end;
   min-height: 20px;
+  width: 100%;
+  margin-top: 2px;
   color: var(--label-2);
   font-size: 11.5px;
   cursor: grab;
@@ -638,72 +673,81 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
   margin: 0 1px;
 }
 
-.page-head.compact .page-date time {
+.page-head.compact .page-date time,
+.page-header.compact .page-date time {
   display: none;
-}
-
-.page-title-row {
-  display: flex;
-  align-items: baseline;
-  min-width: 0;
-  margin-top: 1px;
-}
-
-.page-title {
-  width: fit-content;
-  max-width: 100%;
-  margin: 0;
-  overflow: hidden;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.018em;
-  line-height: 1.22;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  user-select: text;
-  cursor: text;
 }
 
 .page-meta {
   display: inline-flex;
-  flex: 0 1 auto;
+  flex: 1 1 100%;
+  width: 100%;
   flex-wrap: wrap;
-  gap: 3px;
+  gap: 2px 5px;
   align-items: center;
-  justify-content: flex-end;
-  margin-left: auto;
+  justify-content: flex-start;
   color: var(--label-2);
   font-size: 11px;
-  opacity: 0.65;
+  opacity: 0.8;
   transition: opacity 0.16s ease;
   pointer-events: auto;
 }
 
 .page-head:hover .page-meta,
+.page-header:hover .page-meta,
 .page-meta:hover,
 .page-meta:focus-within {
   opacity: 1;
 }
 
-/* Encabezado centrado de la hoja */
-.page-head.centered-title .page-title-row {
+/* Línea 3: Acciones (Fijar, Arrancar, Versiones) */
+.page-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 5px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 20;
+}
+
+/* Encabezado centrado de la hoja: alineación coherente en las 3 filas */
+.page-head.centered-title .page-title-row,
+.page-header.centered-title .page-title-row {
   justify-content: center;
 }
 
-.page-head.centered-title .page-title {
+.page-head.centered-title .page-title,
+.page-header.centered-title .page-title {
   margin-right: auto;
   margin-left: auto;
   text-align: center;
 }
 
-.page-head.centered-title .page-title.editable {
+.page-head.centered-title .page-title.editable,
+.page-header.centered-title .page-title.editable {
   margin-right: auto;
   margin-left: auto;
   justify-content: center;
 }
 
-.page-head.centered-title .page-title.editable input {
+.page-head.centered-title .page-title.editable input,
+.page-header.centered-title .page-title.editable input {
   text-align: center;
+}
+
+.page-head.centered-title .page-date,
+.page-head.centered-title .page-meta,
+.page-header.centered-title .page-date,
+.page-header.centered-title .page-meta {
+  justify-content: center;
+}
+
+.page-head.centered-title .page-actions-row,
+.page-header.centered-title .page-actions-row {
+  justify-content: center;
 }
 
 .page-source {
@@ -716,7 +760,11 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 .page-head .meta-item,
 .page-head .meta-btn,
 .page-head .sheet-chip,
-.page-head .chip {
+.page-head .chip,
+.page-header .meta-item,
+.page-header .meta-btn,
+.page-header .sheet-chip,
+.page-header .chip {
   display: inline-flex;
   gap: 4px;
   align-items: center;
@@ -734,7 +782,9 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 }
 
 .page-head .meta-btn:hover,
-.page-head .chip:hover {
+.page-head .chip:hover,
+.page-header .meta-btn:hover,
+.page-header .chip:hover {
   background: var(--fill);
   color: var(--label);
 }
@@ -744,14 +794,11 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
   box-shadow: inset 0 0 0 1.25px var(--label-3);
 }
 
-/* En cuaderno chico los metadatos muestran solo ícono con su tooltip */
-.page-head.compact .page-meta .meta-text {
-  display: none;
-}
-
 .page-head.compact .page-meta .meta-item,
-.page-head.compact .page-meta .meta-btn {
-  padding: 0 4px;
+.page-head.compact .page-meta .meta-btn,
+.page-header.compact .page-meta .meta-item,
+.page-header.compact .page-meta .meta-btn {
+  padding: 0 3px;
 }
 
 .chip {
@@ -1056,7 +1103,7 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 .page-bar {
   position: absolute;
   top: 3px;
-  z-index: 3;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1105,7 +1152,7 @@ html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 .page-actions {
   position: absolute;
   top: 3px;
-  z-index: 3;
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -3465,9 +3512,13 @@ html[data-window='tearoff'] body {
 /* Los controles del encabezado de la hoja quedan por encima de las franjas de pasar
    página: si llegan hasta un borde, el clic sigue siendo de ellos. */
 .page-head .chip,
-.page-head .menu {
+.page-head .menu,
+.page-head .page-actions-row,
+.page-header .chip,
+.page-header .menu,
+.page-header .page-actions-row {
   position: relative;
-  z-index: 3;
+  z-index: 20;
 }
 
 /* Botones de los carteles de arriba: ícono y texto en una línea, y la tecla del atajo
