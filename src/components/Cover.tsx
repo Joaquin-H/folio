@@ -166,7 +166,14 @@ export function Cover(props: {
   const picker = useRef<HTMLInputElement>(null);
   const press = useRef<{ x: number; y: number } | null>(null);
   const dragged = useRef(false);
+  const windowDragStarted = useRef(false);
   const wheel = useRef(0);
+
+  useEffect(() => {
+    dragged.current = false;
+    press.current = null;
+    windowDragStarted.current = false;
+  }, [face]);
 
   const shown = stickers.map((sticker) => (draft && draft.id === sticker.id ? draft : sticker));
   const chosen = arranging ? shown.find((sticker) => sticker.id === selected) : undefined;
@@ -250,6 +257,29 @@ export function Cover(props: {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [arranging, props.leaving, onFlip]);
+
+  // Abrir el cuaderno con el teclado desde la tapa o contratapa (Enter, Space, ArrowRight, ArrowLeft).
+  useEffect(() => {
+    if (arranging || props.leaving) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (document.querySelector('.backdrop, .menu-list')) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, button, [role="button"], [role="menuitem"]')) return;
+      if (
+        event.key === 'Enter' ||
+        event.key === ' ' ||
+        event.key === 'Spacebar' ||
+        event.key === 'ArrowRight' ||
+        event.key === 'ArrowLeft'
+      ) {
+        event.preventDefault();
+        props.onOpen();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [arranging, props.leaving, props.onOpen]);
 
   // Acomodando, el teclado es de la imagen elegida: las flechas la corren, + y − la
   // agrandan y la achican, Supr la quita; Esc o Enter terminan. Se escucha antes que
@@ -377,26 +407,67 @@ export function Cover(props: {
       ref={setRoot}
       className={`cover ${face}${props.leaving ? ' leaving' : ''}${arranging ? ' arranging' : ''}${dropping ? ' dropping' : ''}`}
       data-cover-style={props.skin}
-      data-tauri-drag-region={arranging ? undefined : ''}
-      onMouseDown={(event) => {
-        if (event.button === 0 && !arranging && !interactive(event.target)) {
-          api.window.drag();
-        }
-      }}
       onPointerDown={(event) => {
+        if (event.button !== 0 || arranging || interactive(event.target)) return;
         dragged.current = false;
-        press.current = arranging || interactive(event.target) ? null : { x: event.clientX, y: event.clientY };
+        windowDragStarted.current = false;
+        press.current = { x: event.clientX, y: event.clientY };
+        try {
+          (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        } catch {}
       }}
       onPointerMove={(event) => {
         const start = press.current;
-        if (!start || dragged.current || !(event.buttons & 1)) return;
-        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4) {
+        if (!start || !(event.buttons & 1)) return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 5) {
           dragged.current = true;
-          api.window.drag();
+          // Arrastre de ventana solo tras mover >5px fuera de elementos interactivos si no es swipe horizontal
+          const isSwipe = Math.abs(dx) > Math.abs(dy) * 1.2;
+          if (!isSwipe && dist > 8 && !windowDragStarted.current) {
+            windowDragStarted.current = true;
+            api.window.drag();
+          }
         }
       }}
+      onPointerUp={(event) => {
+        const start = press.current;
+        press.current = null;
+        const wasWindowDrag = windowDragStarted.current;
+        windowDragStarted.current = false;
+        try {
+          if ((event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) {
+            (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+          }
+        } catch {}
+        if (!start || arranging || interactive(event.target) || wasWindowDrag) return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        // Swipe horizontal en cualquier sentido abre el cuaderno
+        if (Math.abs(dx) >= 20 && Math.abs(dx) > Math.abs(dy)) {
+          props.onOpen();
+        }
+      }}
+      onPointerCancel={(event) => {
+        press.current = null;
+        windowDragStarted.current = false;
+        try {
+          if ((event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) {
+            (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+          }
+        } catch {}
+      }}
       onClick={(event) => {
-        if (!arranging && !interactive(event.target) && !dragged.current) props.onOpen();
+        if (!arranging && !interactive(event.target) && !windowDragStarted.current && !dragged.current) {
+          props.onOpen();
+        }
+      }}
+      onDoubleClick={(event) => {
+        if (!arranging && !interactive(event.target)) {
+          props.onOpen();
+        }
       }}
       onDragOver={(event) => {
         if (!hasFiles(event)) return;
@@ -409,6 +480,17 @@ export function Cover(props: {
       }}
       onDrop={onDrop}
     >
+      {/* Franja superior dedicada para arrastre de ventana sin interferir con clics ni gestos de apertura */}
+      {!arranging && (
+        <div
+          className="cover-drag-bar"
+          data-tauri-drag-region
+          onMouseDown={(event) => {
+            if (event.button === 0) api.window.drag();
+          }}
+          aria-hidden="true"
+        />
+      )}
       {/* El estilo de la tapa se dibuja en dos capas: una debajo de las imágenes pegadas
           (el color, el patrón, el lomo) y otra encima (la tira elástica, las costuras). */}
       <div className="cover-skin" aria-hidden="true" />

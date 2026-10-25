@@ -76,6 +76,21 @@
   animation: book-in 0.24s ease;
 }
 
+/* Franja superior dedicada para arrastre de ventana sin interferir con clics ni gestos de apertura */
+.cover-drag-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 76px;
+  height: 32px;
+  z-index: 3;
+  cursor: grab;
+}
+
+.cover-drag-bar:active {
+  cursor: grabbing;
+}
+
 /* Desde la contratapa el cuaderno se abre hacia atrás: el cursor lo avisa. */
 .cover.back {
   cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='white' fill-opacity='.94' stroke='black' stroke-opacity='.2'/><path d='M18.5 10l-6 6 6 6' fill='none' stroke='%231d1d1f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>") 16 16, w-resize;

@@ -587,9 +587,9 @@ test('feature 13: zonas de arrastre de ventana y deslizamiento/scroll en doble h
   await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'single', frame: 'none' } });
   await page.until(async () => (await page.ask('count', '.page-bar.single[data-tauri-drag-region]')) > 0, 'en modo single la barra superior debe tener data-tauri-drag-region');
 
-  // 3. Portada (cuaderno cerrado): la tapa tiene data-tauri-drag-region y responde a arrastre
+  // 3. Portada (cuaderno cerrado): la tapa tiene franja superior con data-tauri-drag-region y responde a arrastre
   await page.clickOn('.page-controls button[aria-label="Cerrar el cuaderno"]');
-  await page.until(async () => (await page.ask('count', '.cover[data-tauri-drag-region]')) > 0, 'la tapa debe tener data-tauri-drag-region');
+  await page.until(async () => (await page.ask('count', '.cover .cover-drag-bar[data-tauri-drag-region], .cover [data-tauri-drag-region]')) > 0, 'la franja superior de la tapa debe tener data-tauri-drag-region');
 
   // 4. Deslizar / scroll horizontal de solapas (.tabs) con scroll/wheel
   await page.clickOn('.cover');
