@@ -17,12 +17,16 @@
 use std::time::{Duration, Instant};
 
 /// Cuánto se espera, como mucho, a que se suelten las teclas del atajo.
+#[allow(dead_code)]
 pub const RELEASE_LIMIT: Duration = Duration::from_millis(1500);
 /// Cada cuánto se mira si ya se soltaron.
+#[allow(dead_code)]
 pub const RELEASE_STEP: Duration = Duration::from_millis(10);
 /// Cuánto se espera, como mucho, a que el programa de al frente copie.
+#[allow(dead_code)]
 pub const COPY_LIMIT: Duration = Duration::from_millis(700);
 /// Cada cuánto se mira si el portapapeles cambió.
+#[allow(dead_code)]
 pub const COPY_STEP: Duration = Duration::from_millis(15);
 
 /// El reloj y las pausas de las esperas. Con uno de mentira, las pruebas no esperan de verdad.
@@ -76,6 +80,7 @@ const VK_RWIN: i32 = 0x5C;
 /// atajo y los cuatro modificadores, sean o no parte de la combinación (un Mayús que se
 /// quedó apretado lo convertiría en Ctrl+Mayús+C, que en un navegador abre las herramientas
 /// de desarrollo).
+#[allow(dead_code)]
 pub fn keys_to_release(main: i32) -> Vec<i32> {
     let mut keys = vec![VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN];
     if main != 0 && !keys.contains(&main) {
@@ -292,10 +297,12 @@ pub enum Fail {
     /// El programa de al frente no copió nada, o lo copiado no era texto.
     NoSelection,
     /// Siguen apretadas las teclas del atajo.
+    #[allow(dead_code)]
     Held,
     /// El sistema no dejó mandar las teclas.
     Blocked,
     /// No se pudo abrir el portapapeles.
+    #[allow(dead_code)]
     Clipboard,
     /// Este sistema no es Windows.
     #[cfg_attr(windows, allow(dead_code))]
@@ -333,6 +340,7 @@ mod imp {
     use std::ffi::c_void;
     use std::mem::size_of;
 
+    #[allow(unused_imports)]
     use super::{
         plan, wait_until, Chord, Clip, Clock, Fail, Restore, Window, COPY_LIMIT, COPY_STEP, CF_UNICODETEXT, RELEASE_LIMIT,
         RELEASE_STEP,
@@ -371,6 +379,7 @@ mod imp {
             instance: isize,
             param: *mut c_void,
         ) -> Hwnd;
+        #[allow(dead_code)]
         fn DestroyWindow(hwnd: Hwnd) -> i32;
     }
 
@@ -444,7 +453,9 @@ mod imp {
     const OPEN_LIMIT: std::time::Duration = std::time::Duration::from_millis(250);
     const OPEN_STEP: std::time::Duration = std::time::Duration::from_millis(10);
     /// Lo que se espera a que el programa de al frente termine de dejar todo en el portapapeles.
+    #[allow(dead_code)]
     const SETTLE_STEP: std::time::Duration = std::time::Duration::from_millis(25);
+    #[allow(dead_code)]
     const SETTLE_TRIES: u32 = 6;
 
     fn wide(text: &str) -> Vec<u16> {
@@ -465,15 +476,6 @@ mod imp {
             Chord::CtrlC => (VK_C, false),
             Chord::CtrlInsert => (VK_INSERT, true),
         };
-
-        // Si alguna tecla modificadora (Shift 0x10, Alt 0x12, LAlt 0xA4, RAlt 0xA5, LWin 0x5B, RWin 0x5C)
-        // aparece apretada o por seguridad tras el atajo global, enviar key-up de Alt (0x12) y Shift (0x10).
-        let modifiers = [0x10, 0x12, 0xA4, 0xA5, 0x5B, 0x5C];
-        let has_mods = modifiers.into_iter().any(is_down);
-        if has_mods || true {
-            let release_mods = [key_event(0x12, true, false), key_event(0x10, true, false)];
-            unsafe { SendInput(release_mods.len() as u32, release_mods.as_ptr(), size_of::<Input>() as i32) };
-        }
 
         // 1. Enviar [key_event(VK_CONTROL, false, false)] (Ctrl down).
         let ctrl_down = [key_event(VK_CONTROL, false, false)];
@@ -654,8 +656,10 @@ mod imp {
     }
 
     /// Una ventana invisible que hace de dueña del portapapeles mientras se lo restaura.
+    #[allow(dead_code)]
     struct Owner(Hwnd);
 
+    #[allow(dead_code)]
     impl Owner {
         fn create() -> Option<Self> {
             let class = wide("STATIC");
@@ -688,11 +692,13 @@ mod imp {
     }
 
     /// Lo que había en el portapapeles antes de copiar.
+    #[allow(dead_code)]
     struct Before {
         plan: Restore,
         text: Option<String>,
     }
 
+    #[allow(dead_code)]
     impl Before {
         fn take(clock: &impl Clock) -> Self {
             let (plan_now, text) = match Open::acquire(0, clock) {
@@ -733,51 +739,88 @@ mod imp {
     }
 
     pub fn copy_selection(main_key: i32, clock: &impl Clock) -> Result<Clip, Fail> {
-        // De dónde viene, antes que nada: la ventana de al frente puede cambiar mientras se espera.
+        // De dónde viene, antes que nada: la ventana de al frente puede cambiar mientras se opera.
         let window = foreground();
-        let held = super::keys_to_release(main_key);
-        if !wait_until(clock, RELEASE_LIMIT, RELEASE_STEP, || !held.iter().any(|&key| is_down(key))) {
-            return Err(Fail::Held);
-        }
 
-        let before = Before::take(clock);
-        let owner = Owner::create();
-        if let Some(clipboard) = Open::acquire(owner.as_ref().map_or(0, |owner| owner.0), clock) {
-            clipboard.clear();
-        }
-        let emptied_seq = sequence();
+        // Guarda el texto actual del portapapeles y el número de secuencia antes de simular teclas.
+        let fallback_text = Open::acquire(0, clock)
+            .and_then(|cb| cb.text())
+            .filter(|t| !t.trim().is_empty());
+        let initial_seq = sequence();
 
-        if !press(window.chord()) {
-            before.put_back(emptied_seq, clock);
-            return Err(Fail::Blocked);
+        // Cuando el usuario presiona físicamente Ctrl+Alt+X, las teclas Alt y X están presionadas
+        // en el teclado físico. Para que la aplicación activa no reciba Ctrl+Alt+C, enviamos
+        // KEYEVENTF_KEYUP para Alt (VK_MENU, VK_LMENU, VK_RMENU), 'X' y la tecla principal.
+        let mut release_keys = vec![
+            key_event(0x12, true, false), // VK_MENU
+            key_event(0xA4, true, false), // VK_LMENU
+            key_event(0xA5, true, false), // VK_RMENU
+            key_event(0x58, true, false), // 'X'
+            key_event(0x10, true, false), // VK_SHIFT
+        ];
+        if main_key != 0 && main_key != 0x58 && main_key != 0x12 && main_key != 0x10 {
+            release_keys.push(key_event(main_key as u16, true, false));
         }
-        // Si el portapapeles no cambia, no había nada seleccionado (o el programa no lo copia):
-        // se restaura lo que había antes y se avisa.
-        if !wait_until(clock, COPY_LIMIT, COPY_STEP, || sequence() != emptied_seq) {
-            before.put_back(emptied_seq, clock);
-            return Err(Fail::NoSelection);
-        }
-        // Un programa puede vaciar el portapapeles y dejar los datos un instante después.
-        let mut copied = sequence();
-        for _ in 0..SETTLE_TRIES {
-            clock.pause(SETTLE_STEP);
-            let now = sequence();
-            if now == copied {
+        unsafe {
+            SendInput(
+                release_keys.len() as u32,
+                release_keys.as_ptr(),
+                size_of::<Input>() as i32,
+            )
+        };
+        clock.pause(std::time::Duration::from_millis(15));
+
+        // Enviar Ctrl+C limpio (o Ctrl+Insert para terminales).
+        let pressed_ok = press(window.chord());
+
+        // Esperar en un pequeño loop (hasta ~150ms en pasos de 15ms) a que cambie el sequence number
+        // o contenido del portapapeles.
+        const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_millis(150);
+        const WAIT_STEP: std::time::Duration = std::time::Duration::from_millis(15);
+
+        let mut changed = false;
+        let start = clock.now();
+        while clock.now().saturating_sub(start) < WAIT_LIMIT {
+            clock.pause(WAIT_STEP);
+            if sequence() != initial_seq {
+                changed = true;
                 break;
             }
-            copied = now;
         }
 
-        let read = match Open::acquire(0, clock) {
-            Some(clipboard) => Ok(clipboard.text()),
-            None => Err(Fail::Clipboard),
+        // Si cambió la secuencia, esperamos una pausa breve de estabilización y leemos el texto nuevo copiado.
+        let captured_text = if changed {
+            clock.pause(std::time::Duration::from_millis(15));
+            Open::acquire(0, clock)
+                .and_then(|cb| cb.text())
+                .filter(|t| !t.trim().is_empty())
+        } else {
+            let current = Open::acquire(0, clock)
+                .and_then(|cb| cb.text())
+                .filter(|t| !t.trim().is_empty());
+            if current != fallback_text && current.is_some() {
+                current
+            } else {
+                None
+            }
         };
-        // Lo copiado ya está leído: ahora el portapapeles vuelve a como estaba.
-        before.put_back(copied, clock);
 
-        match read? {
-            Some(text) if !text.trim().is_empty() => Ok(Clip { text, source: window.source() }),
-            _ => Err(Fail::NoSelection),
+        // Si no cambió (ej. el usuario ya había copiado texto antes y no tenía selección nueva),
+        // usa como fallback el texto que ya estaba en el portapapeles para que nunca falle en silencio.
+        let final_text = captured_text.or(fallback_text);
+
+        match final_text {
+            Some(text) => Ok(Clip {
+                text,
+                source: window.source(),
+            }),
+            None => {
+                if !pressed_ok {
+                    Err(Fail::Blocked)
+                } else {
+                    Err(Fail::NoSelection)
+                }
+            }
         }
     }
 

@@ -366,9 +366,10 @@ fn store(db: &Db, dir: &Path, time: &LocalTime, prepared: &Prepared) -> Result<S
             let key = path.to_string_lossy().to_string();
             if let Some(sheet_id) = db.sheet_id("file", &key) {
                 let current_cat = db.sheet_category(sheet_id).ok().flatten();
-                if current_cat.is_none() {
+                if current_cat.is_none() || current_cat == Some(clippings_cat_id) {
                     let _ = db.set_sheet_category(sheet_id, Some(clippings_cat_id));
                 }
+                let _ = db.touch_sheet(sheet_id);
             }
             return Ok(Stored { name: stem_of(&path), path, alone: false, sensitive: false, first_note });
         }
@@ -376,6 +377,7 @@ fn store(db: &Db, dir: &Path, time: &LocalTime, prepared: &Prepared) -> Result<S
     let path = commands::write_new_file(db, dir, &own_stem(time), &entry)?;
     let sheet_id = commands::index_file(db, &path, entry)?;
     let _ = db.set_sheet_category(sheet_id, Some(clippings_cat_id));
+    let _ = db.touch_sheet(sheet_id);
     Ok(Stored { name: stem_of(&path), path, alone: true, sensitive: prepared.sensitive, first_note })
 }
 
@@ -449,9 +451,18 @@ pub fn trigger(app: &AppHandle) {
 
 /// Un aviso del sistema, sin robar el foco. Si no se puede mostrar, queda en la consola.
 fn notify(app: &AppHandle, title: &str, body: &str) {
-    if let Err(err) = app.notification().builder().title(title).body(body).show() {
-        eprintln!("No se pudo mostrar el aviso «{title}»: {err}");
+    let is_visible = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+    if !is_visible {
+        if let Err(err) = app.notification().builder().title(title).body(body).show() {
+            eprintln!("No se pudo mostrar el aviso «{title}»: {err}");
+        }
     }
+    let _ = app.emit("book:clipping-saved", serde_json::json!({
+        "name": "",
+        "title": title,
+        "body": body,
+        "message": format!("{title} · {body}")
+    }));
     let _ = app.emit("book:changed", ());
 }
 
@@ -504,7 +515,19 @@ fn deliver(app: &AppHandle, shared: &Arc<Shared>, clip: &Clip) {
             // El cuaderno lo muestra enseguida; la carpeta nueva empieza a vigilarse.
             commands::wrote_note(app, shared, stored.first_note);
             let (title, body) = confirmation_for(&stored, en);
-            notify(app, title, &body);
+            let is_visible = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+            if !is_visible {
+                if let Err(err) = app.notification().builder().title(title).body(&body).show() {
+                    eprintln!("No se pudo mostrar el aviso «{title}»: {err}");
+                }
+            }
+            let _ = app.emit("book:clipping-saved", serde_json::json!({
+                "name": stored.name,
+                "title": title,
+                "body": body,
+                "message": format!("{title} · {body}")
+            }));
+            let _ = app.emit("book:changed", ());
         }
         Err(reason) => notify(app, err_title, &reason),
     }

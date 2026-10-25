@@ -102,6 +102,31 @@ export function App() {
   /** El próximo ajuste de la ventana no la centra (viene de estirarla a mano). */
   const keepPlace = useRef(false);
 
+  const [clippingToast, setClippingToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const stop = api.onClippingSaved((payload) => {
+      if (!alive) return;
+      api
+        .getOverview()
+        .then((next) => alive && setOverview(next))
+        .catch(() => {});
+      setRevision((value) => value + 1);
+      if (payload.message) {
+        setClippingToast(payload.message);
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setClippingToast(null), 3500);
+      }
+    });
+    return () => {
+      alive = false;
+      stop();
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, []);
+
   useEffect(() => {
     let alive = true;
     const refresh = () =>
@@ -646,6 +671,14 @@ export function App() {
       </Presence>
 
       <Tutorial replay={tour} onOpenSettings={openSettings} />
+
+      <Presence show={clippingToast !== null}>
+        {(leaving) => (
+          <div className={`toast${leaving ? ' leaving' : ''}`} role="status">
+            {clippingToast}
+          </div>
+        )}
+      </Presence>
     </div>
   );
 }

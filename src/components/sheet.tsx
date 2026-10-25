@@ -49,7 +49,7 @@ export function sourceLabel(sheet: SheetSummary): string {
 }
 
 /** Contenido completo y versiones de una hoja; se recarga cuando la hoja cambia. */
-export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true): SheetDetail | null {
+export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, revision?: number): SheetDetail | null {
   const [detail, setDetail] = useState<SheetDetail | null>(null);
   const id = sheet?.id;
   const stamp = sheet ? `${sheet.modifiedAt}:${sheet.versionCount}` : '';
@@ -63,7 +63,7 @@ export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true):
     return () => {
       alive = false;
     };
-  }, [id, stamp, enabled]);
+  }, [id, stamp, enabled, revision]);
   return detail && detail.id === id ? detail : null;
 }
 
