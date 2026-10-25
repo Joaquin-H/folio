@@ -419,6 +419,7 @@ test('feature 9b: arrancar hoja desde menú y atajo, múltiples hojas sin duplic
   // 4. Abrir la ventana flotante de la hoja 3 (?window=tearoff&id=3), editar, fijar, colapsar y verificar apilado sin superposición
   await page.open({ query: '?window=tearoff&id=3' });
   await page.until(async () => (await page.ask('count', '.tearoff-sheet')) > 0, 'no cargó la ventana de la hoja arrancada 3');
+  await page.until(async () => (await page.ask('label', '.page-title')) === 'reunion-equipo.md', 'no cargó el título de la hoja arrancada 3');
   equal(await page.ask('label', '.page-title'), 'reunion-equipo.md', 'el título de la hoja arrancada coincide');
 
   // Editar texto y verificar que se guarda en el cuaderno
@@ -491,6 +492,115 @@ test('feature 10: almacenamiento con historial comprimido, deduplicado y sin reg
   // 6. Verificar que el texto en el cuaderno sigue íntegro
   const readerText = await page.ask('label', '.flow-clip:not(.parked) .page-text');
   check(readerText.includes('Pendientes de hoy'), 'el texto en la hoja del cuaderno sigue íntegro');
+});
+
+// ---- Feature 11: Anclaje espacial in-situ de hoja flotante al mover y colapsar ----
+
+test('feature 11: expandir -> mover ventana -> colapsar conserva la nueva posición como ancla del icono', async (page) => {
+  await page.open({ query: '?window=capture' });
+  await page.evaluate(`
+    localStorage.removeItem('folio:capture:collapsed');
+    localStorage.removeItem('folio:capture:pinned');
+    localStorage.removeItem('folio:capture:pos:collapsed');
+    localStorage.removeItem('folio:capture:pos:expanded');
+    localStorage.removeItem('folio:mock:floatingRects');
+  `);
+  await page.open({ query: '?window=capture' });
+  await page.until(async () => (await page.ask('count', '.loose')) > 0, 'la hoja suelta no cargó expandida');
+
+  // 1. Simular mover la ventana expandida a una nueva posición en la mitad izquierda (x = 220, y = 180)
+  await page.evaluate(`
+    localStorage.setItem('folio:capture:pos:expanded', JSON.stringify({ x: 220, y: 180 }));
+  `);
+
+  // 2. Colapsar a icono
+  await page.clickOn('.dock-collapse');
+  await page.until(async () => (await page.ask('count', '.loose-dock')) > 0, 'no apareció el icono colapsado');
+
+  // 3. Verificar que el icono quedó anclado in-situ en (220, 180) y NO volvió a la posición vieja (1400, 120)
+  const dockLeft = await page.evaluate(`({
+    x: Number(document.querySelector('.loose-dock')?.dataset.floatingX),
+    y: Number(document.querySelector('.loose-dock')?.dataset.floatingY),
+  })`);
+  equal(dockLeft.x, 220, 'el icono colapsado debe anclarse in-situ en x = 220 tras mover la ventana expandida');
+  equal(dockLeft.y, 180, 'el icono colapsado debe anclarse in-situ en y = 180 tras mover la ventana expandida');
+
+  const storedDock = await page.evaluate("JSON.parse(localStorage.getItem('folio:capture:pos:collapsed') || '{}')");
+  equal(storedDock.x, 220, 'localStorage folio:capture:pos:collapsed debe persistir x = 220');
+  equal(storedDock.y, 180, 'localStorage folio:capture:pos:collapsed debe persistir y = 180');
+
+  // 4. Expandir desde el icono y verificar que abre manteniendo el anclaje
+  await page.clickOn('.loose-dock');
+  await page.until(async () => (await page.ask('count', '.loose')) > 0, 'la hoja no expandió');
+  const expLeft = await page.evaluate(`({
+    x: Number(document.querySelector('.loose')?.dataset.floatingX),
+    y: Number(document.querySelector('.loose')?.dataset.floatingY),
+  })`);
+  equal(expLeft.x, 220, 'la hoja debe expandirse desde el ancla actual en x = 220');
+  equal(expLeft.y, 180, 'la hoja debe expandirse desde el ancla actual en y = 180');
+});
+
+// ---- Feature 12: Arrastre suave del icono sin expandir por error ----
+
+test('feature 12: arrastrar el icono flotante colapsado no lo expande accidentalmente', async (page) => {
+  await page.open({ query: '?window=capture' });
+  await page.until(async () => (await page.ask('count', '.dock-collapse')) > 0, 'falta el botón de colapsar');
+  await page.clickOn('.dock-collapse');
+  await page.until(async () => (await page.ask('count', '.loose-dock')) > 0, 'no colapsó al icono');
+
+  // Simular arrastre > 4px sobre el icono
+  await page.evaluate(`(() => {
+    const dock = document.querySelector('.loose-dock');
+    if (!dock) return;
+    dock.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, screenX: 100, screenY: 100, button: 0 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 120, clientY: 120, screenX: 120, screenY: 120, buttons: 1 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 120, clientY: 120, screenX: 120, screenY: 120 }));
+    dock.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 120, clientY: 120, screenX: 120, screenY: 120, button: 0 }));
+  })()`);
+  await sleep(150);
+
+  // El dock debe seguir colapsado (no expandió)
+  equal(await page.ask('count', '.loose-dock'), 1, 'el icono debe seguir colapsado tras un arrastre de 20px');
+  equal(await page.ask('count', '.loose'), 0, 'la hoja no debe expandirse tras arrastrar');
+
+  // Ahora un clic limpio sin arrastre (dx <= 4)
+  await page.evaluate(`(() => {
+    const dock = document.querySelector('.loose-dock');
+    if (!dock) return;
+    dock.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, screenX: 100, screenY: 100, button: 0 }));
+    dock.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 101, clientY: 101, screenX: 101, screenY: 101, button: 0 }));
+  })()`);
+  await page.until(async () => (await page.ask('count', '.loose')) > 0, 'un clic limpio debe expandir la hoja');
+});
+
+// ---- Feature 13: Zonas de arrastre de ventana y deslizamiento (doble, 1 hoja, portada) ----
+
+test('feature 13: zonas de arrastre de ventana y deslizamiento/scroll en doble hoja, 1 hoja y portada', async (page) => {
+  // 1. Doble hoja en modo frame none: verificar data-tauri-drag-region en barra superior y acciones
+  await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'double', frame: 'none' } });
+  await page.until(async () => (await page.ask('count', '.page-bar.left[data-tauri-drag-region]')) > 0, 'la barra superior izquierda debe tener data-tauri-drag-region');
+  check((await page.ask('count', '.page-actions[data-tauri-drag-region]')) > 0, 'la barra de acciones derecha debe tener data-tauri-drag-region');
+  check((await page.ask('count', '.stage[data-tauri-drag-region]')) > 0, 'el stage del cuaderno debe tener data-tauri-drag-region');
+  equal(await page.ask('count', '.book[data-tauri-drag-region]'), 0, '.book no debe tener data-tauri-drag-region para no trabar swipe ni selección');
+
+  // 2. Modo 1 hoja (single): verificar barra superior única arrastrable
+  await page.open({ ...WINDOW, prefs: { size: 'standard', spread: 'single', frame: 'none' } });
+  await page.until(async () => (await page.ask('count', '.page-bar.single[data-tauri-drag-region]')) > 0, 'en modo single la barra superior debe tener data-tauri-drag-region');
+
+  // 3. Portada (cuaderno cerrado): la tapa tiene data-tauri-drag-region y responde a arrastre
+  await page.clickOn('.page-controls button[aria-label="Cerrar el cuaderno"]');
+  await page.until(async () => (await page.ask('count', '.cover[data-tauri-drag-region]')) > 0, 'la tapa debe tener data-tauri-drag-region');
+
+  // 4. Deslizar / scroll horizontal de solapas (.tabs) con scroll/wheel
+  await page.clickOn('.cover');
+  await page.until(async () => (await page.ask('count', '.tabs')) > 0, 'el cuaderno no abrió');
+  const tabsScrollable = await page.evaluate(`(() => {
+    const tabs = document.querySelector('.tabs');
+    if (!tabs) return false;
+    tabs.dispatchEvent(new WheelEvent('wheel', { deltaY: 40, bubbles: true }));
+    return window.getComputedStyle(tabs).overflowX !== 'visible';
+  })()`);
+  check(tabsScrollable, 'la barra de pestañas debe tener soporte de desplazamiento / overflow');
 });
 
 // ---- Ejecución ----

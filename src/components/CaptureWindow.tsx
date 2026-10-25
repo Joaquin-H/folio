@@ -218,6 +218,10 @@ export function CaptureWindow() {
             }
           }
         } catch {}
+        if (prefX === undefined && floatingRect) {
+          prefX = floatingRect.x;
+          prefY = floatingRect.y;
+        }
       } else {
         try {
           const win = getCurrentWindow();
@@ -225,9 +229,11 @@ export function CaptureWindow() {
           const scale = await win.scaleFactor();
           const logX = scale > 0 ? pos.x / scale : pos.x;
           const logY = scale > 0 ? pos.y / scale : pos.y;
+          prefX = Math.round(logX);
+          prefY = Math.round(logY);
           localStorage.setItem(
             'folio:capture:pos:collapsed',
-            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+            JSON.stringify({ x: prefX, y: prefY }),
           );
         } catch {}
       }
@@ -244,7 +250,7 @@ export function CaptureWindow() {
       localStorage.setItem('folio:capture:collapsed', 'false');
     } catch {}
     setTimeout(() => areaRef.current?.focus(), 60);
-  }, []);
+  }, [floatingRect]);
 
   const collapse = useCallback(async () => {
     if (busy.current || settled.current) return;
@@ -258,22 +264,30 @@ export function CaptureWindow() {
           const scale = await win.scaleFactor();
           const logX = scale > 0 ? pos.x / scale : pos.x;
           const logY = scale > 0 ? pos.y / scale : pos.y;
+          prefX = Math.round(logX);
+          prefY = Math.round(logY);
           localStorage.setItem(
             'folio:capture:pos:expanded',
-            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+            JSON.stringify({ x: prefX, y: prefY }),
           );
         } catch {}
-      }
-      try {
-        const savedDock = localStorage.getItem('folio:capture:pos:collapsed');
-        if (savedDock) {
-          const parsed = JSON.parse(savedDock);
-          if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-            prefX = parsed.x;
-            prefY = parsed.y;
+      } else {
+        try {
+          const savedExp = localStorage.getItem('folio:capture:pos:expanded');
+          if (savedExp) {
+            const parsed = JSON.parse(savedExp);
+            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+              prefX = parsed.x;
+              prefY = parsed.y;
+            }
           }
+        } catch {}
+        if (prefX === undefined && floatingRect) {
+          prefX = floatingRect.x;
+          prefY = floatingRect.y;
         }
-      } catch {}
+      }
+      // Anclaje espacial in-situ: colapsa en la zona actual de la ventana expandida
       const rect = await api.setFloatingMode(true, prefX, prefY);
       setFloatingRect(rect);
       try {
@@ -286,7 +300,7 @@ export function CaptureWindow() {
     try {
       localStorage.setItem('folio:capture:collapsed', 'true');
     } catch {}
-  }, []);
+  }, [floatingRect]);
 
   const togglePin = () => {
     setPinned((curr) => {
@@ -323,6 +337,9 @@ export function CaptureWindow() {
     if (!isTauri) return;
     let timer: number | null = null;
     const unlisten = getCurrentWindow().onMoved(async ({ payload: pos }) => {
+      if (collapsedRef.current) {
+        wasDraggedRef.current = true;
+      }
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(async () => {
         try {
@@ -413,26 +430,45 @@ export function CaptureWindow() {
     return api.onCaptureSeed(pullSeed);
   }, [expand]);
 
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerStartRef = useRef<{ screenX: number; screenY: number; clientX: number; clientY: number } | null>(null);
   const wasDraggedRef = useRef(false);
   const windowStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
-  const handleDockPointerDown = async (e: React.PointerEvent) => {
-    pointerStartRef.current = { x: e.screenX, y: e.screenY };
+  const handleDockPointerDown = (e: React.PointerEvent) => {
+    pointerStartRef.current = { screenX: e.screenX, screenY: e.screenY, clientX: e.clientX, clientY: e.clientY };
     wasDraggedRef.current = false;
     if (isTauri) {
-      try {
-        const win = getCurrentWindow();
-        const pos = await win.outerPosition();
-        windowStartPosRef.current = { x: pos.x, y: pos.y };
-      } catch {}
+      void getCurrentWindow()
+        .outerPosition()
+        .then((pos) => {
+          windowStartPosRef.current = { x: pos.x, y: pos.y };
+        })
+        .catch(() => {});
     }
+    const onMove = (moveEv: PointerEvent) => {
+      const start = pointerStartRef.current;
+      if (!start) return;
+      const screenDist = Math.hypot(moveEv.screenX - start.screenX, moveEv.screenY - start.screenY);
+      const clientDist = Math.hypot(moveEv.clientX - start.clientX, moveEv.clientY - start.clientY);
+      if (screenDist > 4 || clientDist > 4) {
+        wasDraggedRef.current = true;
+      }
+    };
+    const onEnd = () => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onEnd, true);
+      window.removeEventListener('pointercancel', onEnd, true);
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onEnd, true);
+    window.addEventListener('pointercancel', onEnd, true);
   };
 
   const handleDockPointerMove = (e: React.PointerEvent) => {
     if (pointerStartRef.current) {
-      const dist = Math.hypot(e.screenX - pointerStartRef.current.x, e.screenY - pointerStartRef.current.y);
-      if (dist > 5) {
+      const screenDist = Math.hypot(e.screenX - pointerStartRef.current.screenX, e.screenY - pointerStartRef.current.screenY);
+      const clientDist = Math.hypot(e.clientX - pointerStartRef.current.clientX, e.clientY - pointerStartRef.current.clientY);
+      if (screenDist > 4 || clientDist > 4) {
         wasDraggedRef.current = true;
       }
     }
@@ -444,6 +480,16 @@ export function CaptureWindow() {
       e.stopPropagation();
       return;
     }
+    if (pointerStartRef.current) {
+      const screenDist = Math.hypot(e.screenX - pointerStartRef.current.screenX, e.screenY - pointerStartRef.current.screenY);
+      const clientDist = Math.hypot(e.clientX - pointerStartRef.current.clientX, e.clientY - pointerStartRef.current.clientY);
+      if (screenDist > 4 || clientDist > 4) {
+        wasDraggedRef.current = true;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }
     if (isTauri && windowStartPosRef.current) {
       try {
         const win = getCurrentWindow();
@@ -451,6 +497,7 @@ export function CaptureWindow() {
         const dx = Math.abs(pos.x - windowStartPosRef.current.x);
         const dy = Math.abs(pos.y - windowStartPosRef.current.y);
         if (dx > 4 || dy > 4) {
+          wasDraggedRef.current = true;
           return;
         }
       } catch {}
@@ -859,6 +906,10 @@ export function TearOffWindow() {
             }
           }
         } catch {}
+        if (prefX === undefined && floatingRect) {
+          prefX = floatingRect.x;
+          prefY = floatingRect.y;
+        }
       } else {
         try {
           const win = getCurrentWindow();
@@ -866,9 +917,11 @@ export function TearOffWindow() {
           const scale = await win.scaleFactor();
           const logX = scale > 0 ? pos.x / scale : pos.x;
           const logY = scale > 0 ? pos.y / scale : pos.y;
+          prefX = Math.round(logX);
+          prefY = Math.round(logY);
           localStorage.setItem(
             `${storagePrefix}:pos:collapsed`,
-            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+            JSON.stringify({ x: prefX, y: prefY }),
           );
         } catch {}
       }
@@ -885,7 +938,7 @@ export function TearOffWindow() {
       localStorage.setItem(`${storagePrefix}:collapsed`, 'false');
     } catch {}
     setTimeout(() => areaRef.current?.focus(), 60);
-  }, [storagePrefix]);
+  }, [storagePrefix, floatingRect]);
 
   const collapse = useCallback(async () => {
     await flushSave();
@@ -899,27 +952,36 @@ export function TearOffWindow() {
           const scale = await win.scaleFactor();
           const logX = scale > 0 ? pos.x / scale : pos.x;
           const logY = scale > 0 ? pos.y / scale : pos.y;
+          prefX = Math.round(logX);
+          prefY = Math.round(logY);
           localStorage.setItem(
             `${storagePrefix}:pos:expanded`,
-            JSON.stringify({ x: Math.round(logX), y: Math.round(logY) }),
+            JSON.stringify({ x: prefX, y: prefY }),
           );
         } catch {}
-      }
-      try {
-        const savedDock = localStorage.getItem(`${storagePrefix}:pos:collapsed`);
-        if (savedDock) {
-          const parsed = JSON.parse(savedDock);
-          if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-            prefX = parsed.x;
-            prefY = parsed.y;
+      } else {
+        try {
+          const savedExp = localStorage.getItem(`${storagePrefix}:pos:expanded`);
+          if (savedExp) {
+            const parsed = JSON.parse(savedExp);
+            if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+              prefX = parsed.x;
+              prefY = parsed.y;
+            }
           }
+        } catch {}
+        if (prefX === undefined && floatingRect) {
+          prefX = floatingRect.x;
+          prefY = floatingRect.y;
         }
-      } catch {}
+      }
+      // Anclaje espacial in-situ: colapsa en la zona donde quedó la ventana expandida
       const rect = await api.setFloatingMode(true, prefX, prefY);
       setFloatingRect(rect);
       try {
         localStorage.setItem(`${storagePrefix}:pos:collapsed`, JSON.stringify({ x: rect.x, y: rect.y }));
       } catch {}
+      void api.updateTornOffState(sheetId, { collapsed: true, x: rect.x, y: rect.y }).catch(() => {});
     } catch (err) {
       console.error('No se pudo colapsar la hoja flotante:', err);
     }
@@ -927,7 +989,7 @@ export function TearOffWindow() {
     try {
       localStorage.setItem(`${storagePrefix}:collapsed`, 'true');
     } catch {}
-  }, [flushSave, storagePrefix]);
+  }, [flushSave, storagePrefix, sheetId, floatingRect]);
 
   const togglePin = () => {
     setPinned((curr) => {
@@ -964,6 +1026,9 @@ export function TearOffWindow() {
     if (!isTauri) return;
     let timer: number | null = null;
     const unlisten = getCurrentWindow().onMoved(async ({ payload: pos }) => {
+      if (collapsedRef.current) {
+        wasDraggedRef.current = true;
+      }
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(async () => {
         try {
@@ -1037,26 +1102,45 @@ export function TearOffWindow() {
     return () => document.removeEventListener('keydown', onKey);
   }, [flushSave, returnToNotebook]);
 
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerStartRef = useRef<{ screenX: number; screenY: number; clientX: number; clientY: number } | null>(null);
   const wasDraggedRef = useRef(false);
   const windowStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
-  const handleDockPointerDown = async (e: React.PointerEvent) => {
-    pointerStartRef.current = { x: e.screenX, y: e.screenY };
+  const handleDockPointerDown = (e: React.PointerEvent) => {
+    pointerStartRef.current = { screenX: e.screenX, screenY: e.screenY, clientX: e.clientX, clientY: e.clientY };
     wasDraggedRef.current = false;
     if (isTauri) {
-      try {
-        const win = getCurrentWindow();
-        const pos = await win.outerPosition();
-        windowStartPosRef.current = { x: pos.x, y: pos.y };
-      } catch {}
+      void getCurrentWindow()
+        .outerPosition()
+        .then((pos) => {
+          windowStartPosRef.current = { x: pos.x, y: pos.y };
+        })
+        .catch(() => {});
     }
+    const onMove = (moveEv: PointerEvent) => {
+      const start = pointerStartRef.current;
+      if (!start) return;
+      const screenDist = Math.hypot(moveEv.screenX - start.screenX, moveEv.screenY - start.screenY);
+      const clientDist = Math.hypot(moveEv.clientX - start.clientX, moveEv.clientY - start.clientY);
+      if (screenDist > 4 || clientDist > 4) {
+        wasDraggedRef.current = true;
+      }
+    };
+    const onEnd = () => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onEnd, true);
+      window.removeEventListener('pointercancel', onEnd, true);
+    };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onEnd, true);
+    window.addEventListener('pointercancel', onEnd, true);
   };
 
   const handleDockPointerMove = (e: React.PointerEvent) => {
     if (pointerStartRef.current) {
-      const dist = Math.hypot(e.screenX - pointerStartRef.current.x, e.screenY - pointerStartRef.current.y);
-      if (dist > 5) {
+      const screenDist = Math.hypot(e.screenX - pointerStartRef.current.screenX, e.screenY - pointerStartRef.current.screenY);
+      const clientDist = Math.hypot(e.clientX - pointerStartRef.current.clientX, e.clientY - pointerStartRef.current.clientY);
+      if (screenDist > 4 || clientDist > 4) {
         wasDraggedRef.current = true;
       }
     }
@@ -1068,6 +1152,16 @@ export function TearOffWindow() {
       e.stopPropagation();
       return;
     }
+    if (pointerStartRef.current) {
+      const screenDist = Math.hypot(e.screenX - pointerStartRef.current.screenX, e.screenY - pointerStartRef.current.screenY);
+      const clientDist = Math.hypot(e.clientX - pointerStartRef.current.clientX, e.clientY - pointerStartRef.current.clientY);
+      if (screenDist > 4 || clientDist > 4) {
+        wasDraggedRef.current = true;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }
     if (isTauri && windowStartPosRef.current) {
       try {
         const win = getCurrentWindow();
@@ -1075,6 +1169,7 @@ export function TearOffWindow() {
         const dx = Math.abs(pos.x - windowStartPosRef.current.x);
         const dy = Math.abs(pos.y - windowStartPosRef.current.y);
         if (dx > 4 || dy > 4) {
+          wasDraggedRef.current = true;
           return;
         }
       } catch {}

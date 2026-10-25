@@ -299,6 +299,14 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   align-items: flex-end;
   height: 26px;
   container-type: inline-size;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .book.single .tabs {
@@ -1043,7 +1051,8 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  pointer-events: none;
+  pointer-events: auto;
+  user-select: none;
 }
 
 .page-bar > * {

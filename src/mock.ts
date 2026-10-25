@@ -311,13 +311,14 @@ export function computeFloatingRect(
   const wasExpanded = currentW > FLOATING_COLLAPSED_SIZE + 20;
   let rawX = currentX;
   let rawY = currentY;
-  if (savedX !== undefined && savedY !== undefined) {
-    rawX = savedX;
-    rawY = savedY;
-  } else if (wasExpanded) {
+  if (wasExpanded) {
+    // Anclaje espacial in-situ: el ícono colapsado queda anclado en la zona actual de la ventana expandida
     const centerX = currentX + currentW / 2;
     rawX = centerX > midX ? currentX + currentW - s : currentX;
     rawY = currentY;
+  } else if (savedX !== undefined && savedY !== undefined) {
+    rawX = savedX;
+    rawY = savedY;
   }
   let x = Math.round(Math.min(maxX, Math.max(minX, rawX)));
   let y = Math.round(Math.min(maxY, Math.max(minY, rawY)));
