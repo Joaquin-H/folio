@@ -205,7 +205,7 @@ const FUNCTION: [Code; 24] = [
 
 /// La tecla principal de una combinación.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Key {
+pub struct Key {
     /// Su única forma de escribirla: «N», «5», «F5», «ArrowUp», «Plus», «;».
     name: String,
     code: Code,
@@ -256,12 +256,12 @@ impl Key {
 /// Una combinación de teclas: modificadores y una tecla.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Combo {
-    ctrl: bool,
-    alt: bool,
-    shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
     /// La tecla de Windows.
-    win: bool,
-    key: Key,
+    pub win: bool,
+    pub key: Key,
 }
 
 impl Combo {

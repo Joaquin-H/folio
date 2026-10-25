@@ -738,7 +738,7 @@ mod imp {
         }
     }
 
-    pub fn copy_selection(main_key: i32, clock: &impl Clock) -> Result<Clip, Fail> {
+    pub fn copy_selection(main_key: i32, alt: bool, shift: bool, win: bool, clock: &impl Clock) -> Result<Clip, Fail> {
         // De dónde viene, antes que nada: la ventana de al frente puede cambiar mientras se opera.
         let window = foreground();
 
@@ -748,26 +748,36 @@ mod imp {
             .filter(|t| !t.trim().is_empty());
         let initial_seq = sequence();
 
-        // Cuando el usuario presiona físicamente Ctrl+Alt+X, las teclas Alt y X están presionadas
-        // en el teclado físico. Para que la aplicación activa no reciba Ctrl+Alt+C, enviamos
-        // KEYEVENTF_KEYUP para Alt (VK_MENU, VK_LMENU, VK_RMENU), 'X' y la tecla principal.
-        let mut release_keys = vec![
-            key_event(0x12, true, false), // VK_MENU
-            key_event(0xA4, true, false), // VK_LMENU
-            key_event(0xA5, true, false), // VK_RMENU
-            key_event(0x58, true, false), // 'X'
-            key_event(0x10, true, false), // VK_SHIFT
-        ];
-        if main_key != 0 && main_key != 0x58 && main_key != 0x12 && main_key != 0x10 {
+        // Cuando el usuario presiona físicamente el atajo de recorte (por defecto Ctrl+Alt+X, o cualquier combinación
+        // personalizada como Ctrl+Shift+C, Alt+C, etc.), liberamos los modificadores que no formen parte del copiado
+        // (Alt, Shift, Win) y la tecla principal para evitar que la aplicación activa reciba combinaciones espurias.
+        let mut release_keys = Vec::new();
+        if alt {
+            release_keys.push(key_event(0x12, true, false)); // VK_MENU
+            release_keys.push(key_event(0xA4, true, false)); // VK_LMENU
+            release_keys.push(key_event(0xA5, true, false)); // VK_RMENU
+        }
+        if shift {
+            release_keys.push(key_event(0x10, true, false)); // VK_SHIFT
+            release_keys.push(key_event(0xA0, true, false)); // VK_LSHIFT
+            release_keys.push(key_event(0xA1, true, false)); // VK_RSHIFT
+        }
+        if win {
+            release_keys.push(key_event(0x5B, true, false)); // VK_LWIN
+            release_keys.push(key_event(0x5C, true, false)); // VK_RWIN
+        }
+        if main_key != 0 {
             release_keys.push(key_event(main_key as u16, true, false));
         }
-        unsafe {
-            SendInput(
-                release_keys.len() as u32,
-                release_keys.as_ptr(),
-                size_of::<Input>() as i32,
-            )
-        };
+        if !release_keys.is_empty() {
+            unsafe {
+                SendInput(
+                    release_keys.len() as u32,
+                    release_keys.as_ptr(),
+                    size_of::<Input>() as i32,
+                )
+            };
+        }
         clock.pause(std::time::Duration::from_millis(15));
 
         // Enviar Ctrl+C limpio (o Ctrl+Insert para terminales).
@@ -928,7 +938,7 @@ pub fn start_windows_dictation() -> Result<(), String> {
 /// Copia lo seleccionado en el programa de al frente. `main_key` es el virtual-key de la tecla
 /// principal del atajo, que también tiene que estar suelta.
 #[cfg(not(windows))]
-pub fn copy_selection(_main_key: i32, _clock: &impl Clock) -> Result<Clip, Fail> {
+pub fn copy_selection(_main_key: i32, _alt: bool, _shift: bool, _win: bool, _clock: &impl Clock) -> Result<Clip, Fail> {
     Err(Fail::Unsupported)
 }
 

@@ -690,7 +690,7 @@ impl Db {
         Ok(())
     }
 
-    fn lock(&self) -> MutexGuard<'_, Connection> {
+    pub fn lock(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 

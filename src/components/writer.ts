@@ -278,9 +278,22 @@ export function useWriter(events: WriterEvents) {
 
   const consumeRecent = useCallback(() => setRecent(null), []);
 
+  /**
+   * Sincroniza el contenido de la sesión cuando la hoja fue actualizada externamente (ej. recorte recibido en background).
+   */
+  const syncExternal = useCallback((id: number, content: string, hash?: string) => {
+    const s = session.current;
+    if (s && s.id === id) {
+      s.text = content;
+      s.savedText = content;
+      if (hash) s.hash = hash;
+    }
+    setRecent((current) => (current && current.id === id ? { id, text: content, hash } : current));
+  }, []);
+
   return useMemo(
-    () => ({ writing, recent, begin, finish, touched, rename, flush, attach, text, resolve, setCategory, consumeRecent }),
-    [writing, recent, begin, finish, touched, rename, flush, attach, text, resolve, setCategory, consumeRecent],
+    () => ({ writing, recent, begin, finish, touched, rename, flush, attach, text, resolve, setCategory, consumeRecent, syncExternal }),
+    [writing, recent, begin, finish, touched, rename, flush, attach, text, resolve, setCategory, consumeRecent, syncExternal],
   );
 }
 
