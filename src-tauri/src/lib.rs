@@ -325,6 +325,7 @@ pub fn open_main_window(app: &AppHandle) {
         .maximizable(false)
         .decorations(false)
         .transparent(true)
+        .shadow(false)
         // Sin esto, en Windows el manejador nativo de arrastrar y soltar se queda con los
         // archivos y el evento `drop` de la página nunca llega (soltar una imagen sobre la tapa).
         .disable_drag_drop_handler();
@@ -342,6 +343,7 @@ pub fn open_main_window(app: &AppHandle) {
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
     match builder.build() {
         Ok(window) => {
+            let _ = window.set_shadow(false);
             if let Some(s) = &shared {
                 restore_torn_off_windows(app, s);
             }
@@ -475,12 +477,17 @@ pub fn open_capture_window(app: &AppHandle) {
         .maximizable(false)
         .minimizable(false)
         .decorations(false)
+        .transparent(true)
+        .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .center()
         .build();
-    if let Err(err) = built {
-        eprintln!("No se pudo abrir la ventana de captura: {err}");
+    match built {
+        Ok(window) => {
+            let _ = window.set_shadow(false);
+        }
+        Err(err) => eprintln!("No se pudo abrir la ventana de captura: {err}"),
     }
 }
 
@@ -540,6 +547,8 @@ pub(crate) fn open_tear_off_window(
         .maximizable(false)
         .minimizable(false)
         .decorations(false)
+        .transparent(true)
+        .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true);
 
@@ -568,6 +577,7 @@ pub(crate) fn open_tear_off_window(
     let window = builder
         .build()
         .map_err(|err| format!("No se pudo abrir la hoja flotante: {err}"))?;
+    let _ = window.set_shadow(false);
     let _ = commands::apply_floating_mode(
         app,
         &window,

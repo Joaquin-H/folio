@@ -303,7 +303,7 @@ export function App() {
       if (target === undefined) return;
       const { tabs, frame } = now.current.shape;
       const margins: [number, number, number, number] =
-        frame === 'none' ? [0, tabs ? 26 : 0, 0, 0] : [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom];
+        frame === 'none' ? [0, tabs ? 22 : 0, 0, 0] : [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom];
       await api.window.ghost(target, margins).catch(() => {});
     });
   }, []);

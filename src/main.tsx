@@ -7,6 +7,11 @@ import { CaptureWindow, TearOffWindow } from './components/CaptureWindow';
 import { SettingsWindow } from './components/Settings';
 import { applyPrefs, loadPrefs } from './hooks';
 
+// La app tiene tres ventanas que comparten este mismo código: el cuaderno, los ajustes
+// y la captura rápida. Cada una se identifica con un parámetro en su dirección.
+const which = new URLSearchParams(location.search).get('window');
+document.documentElement.dataset.window = which ?? 'notebook';
+
 // Antes del primer dibujo, para que la ventana no parpadee con el tema equivocado.
 applyPrefs(loadPrefs());
 
@@ -62,11 +67,6 @@ window.addEventListener('contextmenu', (event) => {
     event.preventDefault();
   }
 });
-
-// La app tiene tres ventanas que comparten este mismo código: el cuaderno, los ajustes
-// y la captura rápida. Cada una se identifica con un parámetro en su dirección.
-const which = new URLSearchParams(location.search).get('window');
-document.documentElement.dataset.window = which ?? 'notebook';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

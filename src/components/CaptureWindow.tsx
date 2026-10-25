@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Book, Check, FileText, Mic, Minimize2, NotebookPen, Pin, Trash2 } from 'lucide-react';
+import { Book, Check, FileText, Mic, Minimize2, NotebookPen, PenLine, Pin, Trash2 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api, isTauri } from '../api';
@@ -90,6 +90,7 @@ export function CaptureWindow() {
     return api.onChanged(loadCategories);
   }, []);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Se tocó «Descartar» con texto escrito: falta el segundo clic que lo confirma. */
   const [discarding, setDiscarding] = useState(false);
@@ -563,20 +564,30 @@ export function CaptureWindow() {
       >
         <div className="loose-dock-inner" data-tauri-drag-region>
           <FileText size={20} className="loose-dock-icon" />
-          {hasContent && <span className="loose-dock-badge" aria-hidden="true" />}
+          {category && <span className="loose-dock-badge" style={{ background: category.color }} aria-hidden="true" />}
         </div>
       </div>
     );
   }
 
+  const isEditing = isFocused;
+  const hasContent = Boolean(text.trim() || title.trim());
+
   return (
-    <div className="loose" data-floating-x={floatingRect?.x} data-floating-y={floatingRect?.y}>
+    <div className={`loose capture-sheet${isEditing ? ' is-editing' : ''}`} data-floating-x={floatingRect?.x} data-floating-y={floatingRect?.y}>
       <header className="loose-head capture-head" data-tauri-drag-region>
         <div className="page-date" data-tauri-drag-region>
           <span data-tauri-drag-region>
             {heading.title}, {heading.subtitle}
           </span>
           <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <div
+              className={`loose-edit-badge${isEditing ? ' active' : ''}${busy.current ? ' saving' : ''}`}
+              title={busy.current ? t('Guardando…') : isEditing ? t('Editando') : hasContent ? t('Guardado') : ''}
+            >
+              <PenLine size={11} className="loose-edit-icon" />
+              <span>{busy.current ? t('Guardando…') : isEditing ? t('Editando') : hasContent ? t('Guardado') : ''}</span>
+            </div>
             {(() => {
               const dictationLabel = /Win/i.test(navigator.userAgent) ? t('Dictar con la voz (Win + H)') : t('Dictar con la voz');
               return (
@@ -627,6 +638,8 @@ export function CaptureWindow() {
             spellCheck={false}
             aria-label={t('Título de la hoja')}
             placeholder={titleFromContent(text) || t('Sin título')}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             onChange={(event) => setTitle(event.target.value)}
           />
           <span>.{noteFormat}</span>
@@ -659,6 +672,8 @@ export function CaptureWindow() {
         spellCheck={false}
         placeholder={t('Escribí acá…')}
         aria-label={t('Texto de la hoja')}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
         onKeyDown={(event) => {
           playKeySound(event);
         }}
@@ -777,6 +792,7 @@ export function TearOffWindow() {
   const [returned, setReturned] = useState(false);
 
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
   const dirtyRef = useRef(false);
   const baseHashRef = useRef<string | undefined>(undefined);
   const saveTimerRef = useRef<number | null>(null);
@@ -1236,19 +1252,20 @@ export function TearOffWindow() {
       >
         <div className="loose-dock-inner" data-tauri-drag-region>
           <FileText size={20} className="loose-dock-icon" />
-          <span className="loose-dock-badge" aria-hidden="true" />
+          {category && <span className="loose-dock-badge" style={{ background: category.color }} aria-hidden="true" />}
         </div>
       </div>
     );
   }
 
+  const isEditing = isFocused;
   const ts = detail?.modifiedAt ?? Date.now();
   const heading = dayHeading(ts);
   const ext = detail ? extensionOf(detail.title) : '';
 
   return (
     <div
-      className="loose tearoff-sheet"
+      className={`loose tearoff-sheet${isEditing ? ' is-editing' : ''}`}
       data-sheet-id={sheetId}
       data-floating-x={floatingRect?.x}
       data-floating-y={floatingRect?.y}
@@ -1259,6 +1276,13 @@ export function TearOffWindow() {
             {heading.title}, {heading.subtitle}
           </span>
           <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <div
+              className={`loose-edit-badge${isEditing ? ' active' : ''}${status === 'saving' ? ' saving' : ''}`}
+              title={status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}
+            >
+              <PenLine size={11} className="loose-edit-icon" />
+              <span>{status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}</span>
+            </div>
             {editable &&
               (() => {
                 const dictationLabel = /Win/i.test(navigator.userAgent)
@@ -1313,11 +1337,15 @@ export function TearOffWindow() {
               spellCheck={false}
               aria-label={t('Título de la hoja')}
               placeholder={titleFromContent(text) || t('Sin título')}
+              onFocus={() => setIsFocused(true)}
               onChange={(event) => {
                 setTitle(event.target.value);
                 scheduleSave();
               }}
-              onBlur={() => void flushSave()}
+              onBlur={() => {
+                setIsFocused(false);
+                void flushSave();
+              }}
             />
             <span>{ext || '.txt'}</span>
           </label>
@@ -1353,6 +1381,7 @@ export function TearOffWindow() {
         spellCheck={false}
         placeholder={t('Escribí acá…')}
         aria-label={t('Texto de la hoja')}
+        onFocus={() => setIsFocused(true)}
         onKeyDown={(event) => {
           if (editable) playKeySound(event);
         }}
@@ -1361,7 +1390,10 @@ export function TearOffWindow() {
           setText(event.target.value);
           scheduleSave();
         }}
-        onBlur={() => void flushSave()}
+        onBlur={() => {
+          setIsFocused(false);
+          void flushSave();
+        }}
       />
       {error && <p className="form-error">{error}</p>}
       <footer className="loose-foot">
