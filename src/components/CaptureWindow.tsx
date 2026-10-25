@@ -577,10 +577,8 @@ export function CaptureWindow() {
     <div className={`loose capture-sheet${isEditing ? ' is-editing' : ''}`} data-floating-x={floatingRect?.x} data-floating-y={floatingRect?.y}>
       <header className="loose-head capture-head" data-tauri-drag-region>
         <div className="page-date" data-tauri-drag-region>
-          <span data-tauri-drag-region>
-            {heading.title}, {heading.subtitle}
-          </span>
-          <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span data-tauri-drag-region style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span data-tauri-drag-region>{heading.title}, {heading.subtitle}</span>
             <div
               className={`loose-edit-badge${isEditing ? ' active' : ''}${busy.current ? ' saving' : ''}`}
               title={busy.current ? t('Guardando…') : isEditing ? t('Editando') : hasContent ? t('Guardado') : ''}
@@ -588,6 +586,8 @@ export function CaptureWindow() {
               <PenLine size={11} className="loose-edit-icon" />
               <span>{busy.current ? t('Guardando…') : isEditing ? t('Editando') : hasContent ? t('Guardado') : ''}</span>
             </div>
+          </span>
+          <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
             {(() => {
               const dictationLabel = /Win/i.test(navigator.userAgent) ? t('Dictar con la voz (Win + H)') : t('Dictar con la voz');
               return (
@@ -609,6 +609,7 @@ export function CaptureWindow() {
             <button
               type="button"
               className={`icon-button icon-btn small capture-pin-btn${pinned ? ' pinned' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={togglePin}
               aria-label={pinned ? t('Desfijar hoja (se colapsa al cambiar de ventana)') : t('Fijar expandida')}
               title={
@@ -622,6 +623,7 @@ export function CaptureWindow() {
             <button
               type="button"
               className="icon-button icon-btn small capture-collapse-btn dock-collapse"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => void collapse()}
               aria-label={t('Colapsar hoja')}
               title={t('Colapsar en el dock')}
@@ -1272,10 +1274,8 @@ export function TearOffWindow() {
     >
       <header className="loose-head capture-head" data-tauri-drag-region>
         <div className="page-date" data-tauri-drag-region>
-          <span data-tauri-drag-region>
-            {heading.title}, {heading.subtitle}
-          </span>
-          <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span data-tauri-drag-region style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span data-tauri-drag-region>{heading.title}, {heading.subtitle}</span>
             <div
               className={`loose-edit-badge${isEditing ? ' active' : ''}${status === 'saving' ? ' saving' : ''}`}
               title={status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}
@@ -1283,6 +1283,8 @@ export function TearOffWindow() {
               <PenLine size={11} className="loose-edit-icon" />
               <span>{status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}</span>
             </div>
+          </span>
+          <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
             {editable &&
               (() => {
                 const dictationLabel = /Win/i.test(navigator.userAgent)
@@ -1307,6 +1309,7 @@ export function TearOffWindow() {
             <button
               type="button"
               className={`icon-button icon-btn small capture-pin-btn${pinned ? ' pinned' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={togglePin}
               aria-label={pinned ? t('Desfijar hoja (se colapsa al cambiar de ventana)') : t('Fijar expandida')}
               title={
@@ -1320,6 +1323,7 @@ export function TearOffWindow() {
             <button
               type="button"
               className="icon-button icon-btn small capture-collapse-btn dock-collapse"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => void collapse()}
               aria-label={t('Colapsar hoja')}
               title={t('Colapsar en el dock')}
