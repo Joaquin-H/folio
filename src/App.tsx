@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { BookOpen, Lock, Pin, Power, Scissors, Settings2, Sun, Trash2 } from 'lucide-react';
+import { BookOpen, CalendarCheck, Lock, Pin, Power, Scissors, Settings2, Trash2 } from 'lucide-react';
 import { api, isTauri, type Spot } from './api';
 import { Finder } from './components/Finder';
 import { Notebook, type FilterChip, type NotebookActions, type NotebookTab } from './components/Notebook';
@@ -278,7 +278,7 @@ export function App() {
       if (target === undefined) return;
       const { tabs, frame } = now.current.shape;
       const margins: [number, number, number, number] =
-        frame === 'none' ? [0, 0, 0, 0] : [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom];
+        frame === 'none' ? [0, tabs ? 26 : 0, 0, 0] : [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom];
       await api.window.ghost(target, margins).catch(() => {});
     });
   }, []);
@@ -490,8 +490,8 @@ export function App() {
         ink: readableOn(c.color),
         colorOnly: true,
       })),
-      { key: 'today', view: { kind: 'today' }, label: t('Hoy'), count: counts?.today ?? 0, color: '#FF9500', ink: '#fff', icon: <Sun size={13} />, atEnd: true },
-      { key: 'pinned', view: { kind: 'pinned' }, label: t('Fijas'), count: counts?.pinned ?? 0, color: '#5856D6', ink: '#fff', icon: <Pin size={13} />, atEnd: true },
+      { key: 'today', view: { kind: 'today' }, label: t('Hoy'), count: counts?.today ?? 0, color: '#4e4b47', ink: '#fff', icon: <CalendarCheck size={13} />, atEnd: true },
+      { key: 'pinned', view: { kind: 'pinned' }, label: t('Fijas'), count: counts?.pinned ?? 0, color: '#494d58', ink: '#fff', icon: <Pin size={13} />, atEnd: true },
       ...(clippingsCat
         ? [
             {
@@ -507,7 +507,7 @@ export function App() {
           ]
         : []),
       { key: 'secret', view: { kind: 'secret' }, label: t('Secret-book'), count: counts?.secret ?? 0, color: '#3A3A3C', ink: '#fff', icon: <Lock size={13} />, atEnd: true },
-      { key: 'hidden', view: { kind: 'hidden' }, label: t('Papelera'), count: counts?.hidden ?? 0, color: '#AEAEB2', ink: '#1d1d1f', icon: <Trash2 size={13} />, atEnd: true },
+      { key: 'hidden', view: { kind: 'hidden' }, label: t('Papelera'), count: counts?.hidden ?? 0, color: '#707074', ink: '#fff', icon: <Trash2 size={13} />, atEnd: true },
     ];
   }, [prefs.tabs, overview, t]);
 

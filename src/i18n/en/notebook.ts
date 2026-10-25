@@ -121,6 +121,7 @@ export const notebook: Record<string, string> = {
   'El primer recorrido del disco puede tardar un momento.': 'The first disk scan may take a moment.',
 
   // sheet.tsx
+  'Arrancar': 'Tear off',
   'Arrancar hoja': 'Tear off sheet',
   'Devolver al cuaderno': 'Return to notebook',
   'Devuelta al cuaderno': 'Returned to notebook',

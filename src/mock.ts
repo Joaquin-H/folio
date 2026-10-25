@@ -21,7 +21,7 @@ let categories: Omit<Category, 'count'>[] = [
   { id: 6, name: 'Finanzas', description: 'Gastos, pagos y presupuestos', color: '#FFCC00' },
   { id: 7, name: 'Salud', description: 'Turnos médicos, medicación y ejercicio', color: '#FF2D55' },
   { id: 8, name: 'Ideas', description: 'Ideas sueltas y cosas para investigar', color: '#AF52DE' },
-  { id: 9, name: 'Recortes', description: 'Recortes y capturas rápidas desde otras aplicaciones', color: '#FF9500' },
+  { id: 9, name: 'Recortes', description: 'Recortes y capturas rápidas desde otras aplicaciones', color: '#3d7a5a' },
 ];
 
 type Seed = [title: string, source: Source, ageHours: number, categoryId: number | null, content: string];
@@ -783,7 +783,7 @@ export const mockApi: Api = {
   async ensureClippingsCategory() {
     const existing = categories.find((c) => ['recortes', 'clippings'].includes(c.name.toLowerCase()));
     if (existing) return existing.id;
-    return mockApi.createCategory('Recortes', 'Recortes y capturas rápidas', '#FF9500');
+    return mockApi.createCategory('Recortes', 'Recortes y capturas rápidas', '#3d7a5a');
   },
   async migrateClippings() {
     const catId = await mockApi.ensureClippingsCategory();

@@ -158,8 +158,8 @@ test('feature 7: borde de ventana en personalización (ninguno inmersivo default
   const bookRect = await page.ask('box', '.book');
   const tabsRect = await page.ask('box', '.tabs');
   const leavesRect = await page.ask('box', '.leaves');
-  check(bookRect.top === 0 && bookRect.left === 0, 'en modo inmersivo el cuaderno empieza en (0, 0) sin margen exterior');
-  check(tabsRect.top >= bookRect.top && tabsRect.bottom <= leavesRect.top + 1, 'las solapas están integradas en el borde superior del cuaderno');
+  check(bookRect.left === 0, 'en modo inmersivo el cuaderno empieza en left 0 sin margen lateral exterior');
+  check(tabsRect.top <= bookRect.top && tabsRect.bottom <= bookRect.top + 2, 'las solapas sobresalen sobre el borde superior del cuaderno');
 
   // Verificar que la hoja con categoría tiene su borde de color pegado a la hoja sin hueco negro en modo oscuro
   await page.evaluate(`
@@ -419,7 +419,7 @@ test('feature 9b: arrancar hoja desde menú y atajo, múltiples hojas sin duplic
   // 4. Abrir la ventana flotante de la hoja 3 (?window=tearoff&id=3), editar, fijar, colapsar y verificar apilado sin superposición
   await page.open({ query: '?window=tearoff&id=3' });
   await page.until(async () => (await page.ask('count', '.tearoff-sheet')) > 0, 'no cargó la ventana de la hoja arrancada 3');
-  equal(await page.ask('label', '.page-title'), 'reunion-equipo.md', 'el título de la hoja arrancada coincide');
+  await page.until(async () => (await page.ask('label', '.page-title')) === 'reunion-equipo.md', 'el título de la hoja arrancada coincide');
 
   // Editar texto y verificar que se guarda en el cuaderno
   await page.clickOn('.loose-text');

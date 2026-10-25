@@ -61,7 +61,8 @@ const ratioOf = (shape: Shape) => (shape.closed ? RATIO.single : RATIO[shape.spr
 /** Tamaño de la ventana para un cuaderno dado. */
 export function windowBox(book: Box, tabs: boolean, frame: WindowFrame = 'none'): Box {
   if (frame === 'none') {
-    return { width: book.width, height: book.height };
+    const tabHeight = tabs ? 26 : 0;
+    return { width: book.width, height: book.height + tabHeight };
   }
   return {
     width: book.width + DESK.side * 2,

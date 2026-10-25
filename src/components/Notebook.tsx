@@ -26,6 +26,7 @@ import {
   ChevronsRight,
   Compass,
   Ellipsis,
+  ExternalLink,
   Eye,
   EyeOff,
   FolderDown,
@@ -327,7 +328,7 @@ function PageButtons(props: {
     </div>
   );
 
-  const leftEdge = isSingle ? 38 : 8;
+  const leftEdge = isSingle ? 20 : 8;
 
   if (isSingle) {
     return (
@@ -867,6 +868,7 @@ function OpenSheet(props: {
   const sheetColor = category?.color;
   const finishHint = hintOf('finish');
   const saveHint = hintOf('save');
+  const tearHint = hintOf('tear-off');
   const writeItem: MenuItem = isWriting
     ? { label: t('Guardar y terminar de escribir'), icon: <Check size={14} />, hint: finishHint, separator: true, onSelect: () => void writer.finish() }
     : sheet.source === 'notepad'
@@ -1021,11 +1023,12 @@ function OpenSheet(props: {
                 }}
               >
                 <div className="page-date" data-tauri-drag-region>
-                  <span className="page-date-main" data-tauri-drag-region>
-                    <span data-tauri-drag-region>{dateText}</span>
-                    <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
-                  </span>
                   <div className="page-meta">
+                    <span className="page-date-main meta-item" data-tauri-drag-region title={`${dateText} ${timeOf(sheet.modifiedAt)}`}>
+                      <span data-tauri-drag-region>{dateText}</span>
+                      <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
+                    </span>
+                    <span className="meta-sep" aria-hidden="true">·</span>
                     <span className="sheet-chip meta-item" title={props.counter}>
                       <span className="sheet-indicator-accent" aria-hidden="true" />
                       <span className="meta-text">{props.counter}</span>
@@ -1067,16 +1070,28 @@ function OpenSheet(props: {
                       </button>
                     )}
                     {!isDraft && (
-                      <button
-                        type="button"
-                        className={`chip meta-btn pin-btn${sheet.pinned ? ' active' : ''}`}
-                        onClick={togglePinned}
-                        aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                        title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
-                      >
-                        {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-                        <span className="meta-text">{sheet.pinned ? t('Fijada') : t('Fijar')}</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className={`chip meta-btn pin-btn${sheet.pinned ? ' active' : ''}`}
+                          onClick={togglePinned}
+                          aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                          title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                        >
+                          {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                          <span className="meta-text">{sheet.pinned ? t('Fijada') : t('Fijar')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="chip meta-btn tear-btn"
+                          onClick={() => void (isWriting ? writer.flush() : Promise.resolve()).then(() => tearOff())}
+                          aria-label={t('Arrancar hoja')}
+                          title={tearHint ? `${t('Arrancar hoja')} (${tearHint})` : t('Arrancar hoja')}
+                        >
+                          <ExternalLink size={12} />
+                          <span className="meta-text">{t('Arrancar')}</span>
+                        </button>
+                      </>
                     )}
                     {sheet.versionCount > 0 && (
                       <button
