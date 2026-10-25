@@ -177,11 +177,17 @@ html[data-window='notebook'][data-frame='transparent'][data-theme='dark'] .book 
     0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-/* Modo inmersivo (frame='none'): la ventana ES el cuaderno, sin margen transparente alrededor */
+/* Modo inmersivo (frame='none'): la ventana ajusta al cuaderno sin margen lateral ni inferior;
+   la franja superior permanece transparente para que las solapas asomen naturalmente sobre el cuaderno. */
 html[data-window='notebook'][data-frame='none'] .stage,
 .app.immersive .stage {
-  padding: 0;
+  padding: 26px 0 0;
   place-items: stretch;
+}
+
+html[data-window='notebook'][data-frame='none'] .stage.no-tabs,
+.app.immersive .stage.no-tabs {
+  padding-top: 0;
 }
 
 html[data-window='notebook'][data-frame='none'] .book,
@@ -192,22 +198,6 @@ html[data-window='notebook'][data-frame='none'] .book,
 html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
 :root[data-theme='dark'] .app.immersive .book {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
-}
-
-html[data-window='notebook'][data-frame='none'] .stage:not(.no-tabs) .book:not(.closed),
-.app.immersive .stage:not(.no-tabs) .book:not(.closed) {
-  padding-top: 26px;
-}
-
-html[data-window='notebook'][data-frame='none'] .stage:not(.no-tabs) .book.closed,
-.app.immersive .stage:not(.no-tabs) .book.closed {
-  padding-top: 26px;
-}
-
-html[data-window='notebook'][data-frame='none'] .tabs,
-.app.immersive .tabs {
-  top: 0;
-  z-index: 4;
 }
 
 /* ---- cuaderno ---------------------------------------------------------- */
@@ -301,8 +291,12 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   container-type: inline-size;
 }
 
-.book.single .tabs {
-  left: 30px;
+.book.single:not(.closed) .tabs {
+  left: 24px;
+}
+
+.book.closed .tabs {
+  left: 48px;
 }
 
 .tab {
@@ -363,10 +357,20 @@ html[data-window='notebook'][data-frame='none'] .tabs,
 
 .tab.at-end {
   margin-left: auto;
+  opacity: 0.74;
 }
 
 .tab.at-end ~ .tab.at-end {
   margin-left: 0;
+}
+
+.tab.at-end:hover {
+  opacity: 0.92;
+}
+
+.tab.at-end.active {
+  opacity: 1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
 /* con poco ancho solo la solapa activa muestra su nombre; las demás son su color */
@@ -586,7 +590,7 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   flex-wrap: wrap;
   gap: 3px 8px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   min-height: 20px;
   color: var(--label-2);
   font-size: 11.5px;
@@ -599,12 +603,9 @@ html[data-window='notebook'][data-frame='none'] .tabs,
 
 .page-date-main {
   display: inline-flex;
-  flex: 1 1 auto;
-  gap: 6px;
+  gap: 5px;
   align-items: baseline;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -618,6 +619,15 @@ html[data-window='notebook'][data-frame='none'] .tabs,
   flex: none;
   color: var(--label-3);
   font-variant-numeric: tabular-nums;
+}
+
+.meta-sep {
+  display: inline-flex;
+  align-items: center;
+  color: var(--label-3);
+  opacity: 0.55;
+  user-select: none;
+  margin: 0 1px;
 }
 
 .page-head.compact .page-date time {

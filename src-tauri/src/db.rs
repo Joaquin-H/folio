@@ -1708,6 +1708,10 @@ impl Db {
                     .optional()?
                     .unwrap_or(false);
                 if exists {
+                    let _ = conn.execute(
+                        "UPDATE categories SET color = '#3d7a5a' WHERE id = ?1 AND lower(color) IN ('#d97706', '#ff9500')",
+                        [id],
+                    );
                     return Ok(id);
                 }
             }
@@ -1723,6 +1727,10 @@ impl Db {
             .optional()?;
 
         if let Some(id) = existing {
+            let _ = conn.execute(
+                "UPDATE categories SET color = '#3d7a5a' WHERE id = ?1 AND lower(color) IN ('#d97706', '#ff9500')",
+                [id],
+            );
             conn.execute(
                 "INSERT INTO settings (key, value) VALUES ('clippings_category_id', ?1) \
                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1738,9 +1746,9 @@ impl Db {
             .as_deref()
             == Some("en");
         let (name, desc, color) = if is_en {
-            ("Clippings", "Clippings and quick captures from other apps", "#FF9500")
+            ("Clippings", "Clippings and quick captures from other apps", "#3d7a5a")
         } else {
-            ("Recortes", "Recortes y capturas rápidas desde otras aplicaciones", "#FF9500")
+            ("Recortes", "Recortes y capturas rápidas desde otras aplicaciones", "#3d7a5a")
         };
         let next_pos: i64 = conn
             .query_row("SELECT coalesce(max(position) + 1, 0) FROM categories", [], |r| r.get(0))
@@ -2948,6 +2956,21 @@ mod tests {
         let categories = db.categories().unwrap();
         let cat = categories.into_iter().find(|c| c.id == cat_id).expect("la categoría de recortes existe");
         assert!(cat.name == "Recortes" || cat.name == "Clippings");
+        assert_eq!(cat.color, "#3d7a5a");
+    }
+
+    #[test]
+    fn asegurar_categoria_recortes_migra_color_naranja() {
+        let db = db();
+        let cat_id = db.ensure_clippings_category().unwrap();
+        db.lock()
+            .execute("UPDATE categories SET color = '#d97706' WHERE id = ?1", [cat_id])
+            .unwrap();
+        let ensured = db.ensure_clippings_category().unwrap();
+        assert_eq!(cat_id, ensured);
+        let categories = db.categories().unwrap();
+        let cat = categories.into_iter().find(|c| c.id == cat_id).unwrap();
+        assert_eq!(cat.color, "#3d7a5a");
     }
 
     #[test]
