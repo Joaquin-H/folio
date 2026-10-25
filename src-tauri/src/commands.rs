@@ -1054,6 +1054,7 @@ pub(crate) fn apply_floating_mode(
     let phys_w = (rect.width * scale).round() as i32;
     let phys_h = (rect.height * scale).round() as i32;
     set_window_rect(window, phys_x, phys_y, phys_w, phys_h)?;
+    let _ = window.set_shadow(false);
     if !collapsed {
         let _ = window.set_focus();
     }
@@ -1069,7 +1070,9 @@ pub async fn set_floating_mode(
     preferred_x: Option<f64>,
     preferred_y: Option<f64>,
 ) -> Res<FloatingRect> {
+    let _ = window.set_shadow(false);
     let rect = apply_floating_mode(&app, &window, collapsed, preferred_x, preferred_y)?;
+    let _ = window.set_shadow(false);
     if let Some(id_str) = window.label().strip_prefix("tearoff-") {
         if let Ok(id) = id_str.parse::<i64>() {
             update_saved_torn_off(&state.db, id, Some(collapsed), None, Some(rect.x), Some(rect.y));
@@ -1213,7 +1216,9 @@ pub async fn place_window(window: tauri::WebviewWindow, dx: f64, dy: f64, width:
         y - (inner.y - outer.y),
         w + outer_size.width as i32 - inner_size.width as i32,
         h + outer_size.height as i32 - inner_size.height as i32,
-    )
+    )?;
+    let _ = window.set_shadow(false);
+    Ok(())
 }
 
 /// Muestra el fantasma del cuaderno donde quedaría con ese cambio: los mismos datos que
@@ -1280,6 +1285,7 @@ pub async fn fit_window(
     if target != current {
         window.set_position(target).map_err(e)?;
     }
+    let _ = window.set_shadow(false);
     Ok(())
 }
 

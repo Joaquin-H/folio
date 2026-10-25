@@ -55,6 +55,7 @@ export const notebook: Record<string, string> = {
   'Cerrar el cuaderno': 'Close the notebook',
   Guardado: 'Saved',
   'Guardando…': 'Saving…',
+  Editando: 'Editing',
   'Sin guardar': 'Unsaved',
   'Volver a escribir (Ctrl + P)': 'Back to editing (Ctrl + P)',
   'Previsualizar (Ctrl + P)': 'Preview (Ctrl + P)',
