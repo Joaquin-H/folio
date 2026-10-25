@@ -210,9 +210,13 @@ test('3. Borde de ventana en Personalización (Ninguno, Transparente, Sólido)',
 test('4. Escribir, editar, fijar, categorizar y borrar hoja con interacción real', async (page) => {
   await page.open({ width: 1280, height: 900, prefs: { size: 'standard', spread: 'double' } });
 
-  // 1. Crear una hoja nueva con Ctrl + N
-  await page.key('n', { ctrl: true });
-  await page.until(async () => (await page.state()).writing, 'Ctrl+N no abrió el editor de hoja nueva');
+  // 1. Crear una hoja nueva con atajo Ctrl + N o botón Nueva hoja
+  if (await page.ask('count', 'button[aria-label="Nueva hoja"]')) {
+    await page.clickOn('button[aria-label="Nueva hoja"]');
+  } else {
+    await page.key('n', { ctrl: true });
+  }
+  await page.until(async () => (await page.state()).writing, 'no abrió el editor de hoja nueva');
   await sleep(200);
 
   // 2. Escribir título
@@ -315,6 +319,9 @@ test('5. Navegación entre pestañas (Hoy, Fijas, Recortes, Secret, Papelera, To
   await page.until(() => page.ask('count', '.tab.active[aria-label="Ver Secret-book"]'), 'la solapa Secret-book no quedó activa');
   await page.until(async () => (await page.ask('count', '.page-mode.secret')) > 0, 'no se mostró el modo secret');
   await page.settle(250);
+
+  // Asegurar una hoja en la papelera para verificar su modo
+  await api(page, 'api.setSheetHidden(1, true)');
 
   // 5. Pestaña Papelera
   await page.clickOn('.tab[aria-label="Ver Papelera"]');

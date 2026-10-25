@@ -414,6 +414,12 @@ export async function launch({ width = 1280, height = 900 } = {}) {
 
       async key(key, mods = {}) {
         const info = keyInfo(key);
+        if (mods.ctrl && !mods.alt && ['KeyN', 'KeyW', 'KeyT'].includes(info.code)) {
+          await evaluate(
+            `document.body.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(info.key)}, code: ${JSON.stringify(info.code)}, ctrlKey: true, shiftKey: ${!!mods.shift}, bubbles: true, cancelable: true }))`,
+          );
+          return;
+        }
         const plain = !mods.ctrl && !mods.alt && !mods.meta;
         const text = plain && info.text ? (mods.shift ? info.text.toUpperCase() : info.text) : undefined;
         const common = { key: info.key, code: info.code, windowsVirtualKeyCode: info.vk, nativeVirtualKeyCode: info.vk, modifiers: modifiers(mods) };

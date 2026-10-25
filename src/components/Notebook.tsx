@@ -1652,7 +1652,6 @@ export function Notebook(props: {
     window.clearTimeout(drag.current.timer);
     drag.current.timer = 0;
     drag.current.direction = 0;
-    drag.current.selecting = false;
   }, []);
 
   const sheets = useMemo(

@@ -52,7 +52,7 @@ export function Finder(props: {
     ...sortedCategories.map<Divider>((category) => ({
       key: `category-${category.id}`,
       view: { kind: 'category', id: category.id },
-      label: category.name,
+      label: category.id === clippingsId || category.name === 'Recortes' ? t('Recortes') : category.name,
       count: category.count,
       color: category.color,
     })),
