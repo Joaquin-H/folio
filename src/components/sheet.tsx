@@ -207,12 +207,25 @@ export function SheetBadges(props: { sheet: SheetSummary }) {
   const { sheet } = props;
   return (
     <>
-      {sheet.source === 'file' && sheet.missing && <span className="badge warn">{t('Original eliminado')}</span>}
-      {sheet.secret && sheet.secretSource === 'auto' && <span className="badge warn">{t('Detectada como sensible')}</span>}
+      {sheet.source === 'file' && sheet.missing && (
+        <>
+          <span className="meta-sep" aria-hidden="true">·</span>
+          <span className="badge warn">{t('Original eliminado')}</span>
+        </>
+      )}
+      {sheet.secret && sheet.secretSource === 'auto' && (
+        <>
+          <span className="meta-sep" aria-hidden="true">·</span>
+          <span className="badge warn">{t('Detectada como sensible')}</span>
+        </>
+      )}
       {sheet.categorySource === 'jev' && sheet.categoryConfidence !== null && (
-        <span className="badge" title={t('Confianza de la IA que eligió la categoría')}>
-          {t('IA {percent}%', { percent: Math.round(sheet.categoryConfidence * 100) })}
-        </span>
+        <>
+          <span className="meta-sep" aria-hidden="true">·</span>
+          <span className="badge" title={t('Confianza de la IA que eligió la categoría')}>
+            {t('IA {percent}%', { percent: Math.round(sheet.categoryConfidence * 100) })}
+          </span>
+        </>
       )}
     </>
   );
