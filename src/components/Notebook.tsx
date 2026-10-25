@@ -637,7 +637,7 @@ function OpenSheet(props: {
   }, [g.pageWidth, g.column, g.bodyHeight, g.line, spacer, onCaretPage]);
 
   // Al empezar a escribir, el editor recibe el texto y el cursor; después manda él.
-  const { attach, text: currentText } = writer;
+  const { attach, text: currentText, syncExternal } = writer;
   useLayoutEffect(() => {
     const node = editor.current;
     if (!isWriting || !node) return;
@@ -647,6 +647,18 @@ function OpenSheet(props: {
     caretAt.current = 'end';
     return () => attach(null);
   }, [isWriting, attach, currentText]);
+
+  useEffect(() => {
+    if (!detail || detail.id !== sheet.id) return;
+    syncExternal(sheet.id, detail.content, detail.hash ?? undefined);
+    if (isWriting && editor.current) {
+      const currentVal = readEditor(editor.current);
+      if (currentVal !== detail.content) {
+        editor.current.textContent = toEditor(detail.content);
+        placeCaret(editor.current, 'end');
+      }
+    }
+  }, [detail, sheet.id, isWriting, syncExternal]);
 
   useLayoutEffect(() => {
     if (active) measure();

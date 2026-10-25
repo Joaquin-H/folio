@@ -445,7 +445,14 @@ fn rename_target(db: &Db, notes_dir: Option<&Path>, id: i64, path: &Path, title:
     let Some(dir) = path.parent().filter(|dir| notes_dir == Some(*dir)) else {
         return Ok(None);
     };
-    let stem = safe_stem(title).ok_or("El nombre de la hoja no sirve como nombre de archivo")?;
+    let raw_title = title.trim();
+    let title_stem = raw_title
+        .strip_suffix(".md")
+        .or_else(|| raw_title.strip_suffix(".MD"))
+        .or_else(|| raw_title.strip_suffix(".txt"))
+        .or_else(|| raw_title.strip_suffix(".TXT"))
+        .unwrap_or(raw_title);
+    let stem = safe_stem(title_stem).ok_or("El nombre de la hoja no sirve como nombre de archivo")?;
     if path.file_stem().is_some_and(|current| current.to_string_lossy() == stem) {
         return Ok(None);
     }
@@ -453,13 +460,7 @@ fn rename_target(db: &Db, notes_dir: Option<&Path>, id: i64, path: &Path, title:
     // Cambiar solo mayúsculas es el mismo archivo para Windows: eso sí se permite.
     let same_file = |target: &Path| target.to_string_lossy().to_lowercase() == path.to_string_lossy().to_lowercase();
     let wanted = dir.join(format!("{stem}.{extension}"));
-    if wanted.exists() && !same_file(&wanted) {
-        return Err("Ya hay un archivo con ese nombre".into());
-    }
-    // Sin archivo, el nombre igual puede ser el original de otra hoja del Book (uno que
-    // se borró por fuera: la hoja quedó "sin original"). Esa hoja no se pisa ni se
-    // mezcla con esta: el nombre se numera, igual que al crear una hoja.
-    let taken = |target: &Path| db.file_key_owner(&target.to_string_lossy()).is_some_and(|owner| owner != id);
+    let taken = |target: &Path| (target.exists() && !same_file(target)) || db.file_key_owner(&target.to_string_lossy()).is_some_and(|owner| owner != id);
     if !taken(&wanted) {
         return Ok(Some(wanted));
     }
@@ -470,7 +471,7 @@ fn rename_target(db: &Db, notes_dir: Option<&Path>, id: i64, path: &Path, title:
             // Ya se llama así por un guardado anterior.
             return Ok(None);
         }
-        if !numbered.exists() && !taken(&numbered) {
+        if !taken(&numbered) {
             return Ok(Some(numbered));
         }
         copy += 1;
@@ -582,20 +583,36 @@ mod tests {
         notes.create("dos", "texto de dos");
         let base = notes.sheet(id).hash;
 
-        // Ya hay un archivo con ese nombre, o el título no sirve como nombre: no se
-        // escribe nada, ni en el archivo ni en el Book.
-        for title in ["dos", "///"] {
-            assert!(notes.save(id, "texto de uno, editado", Some(title), &base).is_err(), "{title}");
-            assert_eq!(fs::read_to_string(&path).unwrap(), "texto de uno", "{title}");
-            assert_eq!(notes.sheet(id).hash, base, "{title}");
-        }
-        // Con un título que sí sirve, ese mismo guardado entra: no hay un falso "el
-        // archivo cambió fuera de Book".
-        notes.save(id, "texto de uno, editado", Some("tres"), &base).unwrap();
-        let renamed = notes.dir.join("tres.txt");
+        // Si el título no sirve como nombre de archivo, el guardado falla: no se escribe nada.
+        assert!(notes.save(id, "texto de uno, editado", Some("///"), &base).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "texto de uno");
+        assert_eq!(notes.sheet(id).hash, base);
+
+        // Si el título ya existe en otro archivo, auto-numera con sufijo `(2)` sin fallar:
+        notes.save(id, "texto de uno, editado", Some("dos"), &base).unwrap();
+        let renamed = notes.dir.join("dos (2).txt");
         assert_eq!(fs::read_to_string(&renamed).unwrap(), "texto de uno, editado");
+        assert_eq!(notes.sheet(id).summary.title, "dos (2).txt");
         assert_eq!(notes.sheet(id).summary.path, Some(key(&renamed)));
         assert!(!path.exists());
+
+        // Si se renombra otra hoja al mismo nombre repetido, numera a `(3)`:
+        let (id_otro, path_otro) = notes.create("cuatro", "texto de cuatro");
+        let base_otro = notes.sheet(id_otro).hash;
+        notes.save(id_otro, "texto de cuatro, editado", Some("dos"), &base_otro).unwrap();
+        let renamed3 = notes.dir.join("dos (3).txt");
+        assert_eq!(fs::read_to_string(&renamed3).unwrap(), "texto de cuatro, editado");
+        assert_eq!(notes.sheet(id_otro).summary.title, "dos (3).txt");
+        assert!(!path_otro.exists());
+
+        // Con un título que sí sirve libre, renombra directo:
+        let base_dos = notes.sheet(id).hash;
+        notes.save(id, "texto de uno, editado tres", Some("tres"), &base_dos).unwrap();
+        let renamed_tres = notes.dir.join("tres.txt");
+        assert_eq!(fs::read_to_string(&renamed_tres).unwrap(), "texto de uno, editado tres");
+        assert_eq!(notes.sheet(id).summary.title, "tres.txt");
+        assert_eq!(notes.sheet(id).summary.path, Some(key(&renamed_tres)));
+        assert!(!renamed.exists());
     }
 
     #[test]

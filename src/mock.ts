@@ -381,6 +381,7 @@ let pendingSeed: CaptureSeed | null = (() => {
   }
 })();
 const seedListeners = new Set<() => void>();
+const clippingListeners = new Set<(payload: { name: string; title: string; body: string; message: string; sheetId?: number | null }) => void>();
 
 /** Solo para las pruebas: hace de cuenta que se envió ese texto desde otro programa. */
 export function simulateSend(seed: CaptureSeed) {
@@ -388,9 +389,27 @@ export function simulateSend(seed: CaptureSeed) {
   if (seedListeners.size > 0) {
     seedListeners.forEach((fn) => fn());
   } else {
-    void mockApi.ensureClippingsCategory().then((catId) => {
+    void mockApi.ensureClippingsCategory().then(async (catId) => {
       const entry = [seed.origin, seed.text].filter(Boolean).join('\n');
-      void mockApi.createNote('Recorte capturado', entry, catId);
+      const existing = sheets.find((s) => s.categoryId === catId && s.source === 'file' && !s.hidden && !s.secret);
+      let targetSheet: MockSheet;
+      if (existing) {
+        existing.content = existing.content.trim() ? `${existing.content}\n\n${entry}` : entry;
+        existing.modifiedAt = Date.now();
+        targetSheet = existing;
+      } else {
+        targetSheet = await mockApi.createNote('Recortes', entry, catId);
+      }
+      clippingListeners.forEach((fn) =>
+        fn({
+          name: targetSheet.title,
+          title: 'Enviado a Folio',
+          body: targetSheet.title,
+          message: `Enviado a Folio · ${targetSheet.title}`,
+          sheetId: targetSheet.id,
+        })
+      );
+      changed();
     });
   }
 }
@@ -721,7 +740,14 @@ export const mockApi: Api = {
   },
   async createNote(title, content, categoryId) {
     const raw = title.trim() || titleFromContent(content) || defaultNoteTitle();
-    const name = raw.endsWith('.txt') || raw.endsWith('.md') ? raw : `${raw}.txt`;
+    const ext = raw.endsWith('.md') ? '.md' : '.txt';
+    const clean = raw.replace(/\.(txt|md)$/i, '').trim();
+    let name = `${clean}${ext}`;
+    let copy = 2;
+    while (sheets.some((s) => s.title.toLowerCase() === name.toLowerCase())) {
+      name = `${clean} (${copy})${ext}`;
+      copy++;
+    }
     const sheet: MockSheet = {
       id: nextId++, source: 'file', title: name, path: `${NOTES_DIR}\\${name}`, preview: content.slice(0, 900),
       length: content.length, size: content.length, modifiedAt: Date.now(), categoryId: categoryId ?? null,
@@ -741,8 +767,16 @@ export const mockApi: Api = {
     if (options.baseHash && options.baseHash !== fakeHash(sheet.content) && !options.force) throw new Error('CONFLICT');
     Object.assign(sheet, { content, preview: content.slice(0, 900), length: content.length, size: content.length, modifiedAt: Date.now() });
     if (options.title && sheet.path?.startsWith(NOTES_DIR)) {
-      sheet.title = `${options.title}.txt`;
-      sheet.path = `${NOTES_DIR}\\${sheet.title}`;
+      const ext = sheet.title.endsWith('.md') ? '.md' : '.txt';
+      const clean = options.title.replace(/\.(txt|md)$/i, '').trim();
+      let candidate = `${clean}${ext}`;
+      let copy = 2;
+      while (sheets.some((s) => s.id !== id && s.title.toLowerCase() === candidate.toLowerCase())) {
+        candidate = `${clean} (${copy})${ext}`;
+        copy++;
+      }
+      sheet.title = candidate;
+      sheet.path = `${NOTES_DIR}\\${candidate}`;
     }
     changed();
     return later({ ...sheet, hash: fakeHash(content) });
@@ -1087,7 +1121,10 @@ export const mockApi: Api = {
     listeners.add(callback);
     return () => listeners.delete(callback);
   },
-  onClippingSaved: () => () => {},
+  onClippingSaved(callback) {
+    clippingListeners.add(callback);
+    return () => clippingListeners.delete(callback);
+  },
   onOpenMap: () => () => {},
   onFocusSheet: () => () => {},
   window: { hide() {}, minimize() {}, quit() {}, async fit() {}, async place() {}, async ghost() {}, drag() {}, onClosing: () => () => {} },

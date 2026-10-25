@@ -64,6 +64,30 @@ export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, 
       alive = false;
     };
   }, [id, stamp, enabled, revision]);
+
+  useEffect(() => {
+    if (id === undefined || !enabled) return;
+    let alive = true;
+    const fetchFresh = () => {
+      if (!alive) return;
+      api
+        .getSheet(id)
+        .then((result) => alive && setDetail(result))
+        .catch(() => {});
+    };
+    const stopClip = api.onClippingSaved((payload) => {
+      if (!payload.sheetId || payload.sheetId === id) {
+        fetchFresh();
+      }
+    });
+    const stopChanged = api.onChanged(fetchFresh);
+    return () => {
+      alive = false;
+      stopClip();
+      stopChanged();
+    };
+  }, [id, enabled]);
+
   return detail && detail.id === id ? detail : null;
 }
 
