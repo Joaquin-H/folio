@@ -494,8 +494,7 @@ export function App() {
   const total = view.kind === 'category' ? category?.count : overview ? overview.counts[view.kind] : undefined;
   const viewLabel = view.kind === 'category' ? (category?.name ?? t('Categoría')) : t(VIEW_LABEL[view.kind]);
 
-  const tabs = useMemo<NotebookTab[] | null>(() => {
-    if (!prefs.tabs) return null;
+  const allTabs = useMemo<NotebookTab[]>(() => {
     const counts = overview?.counts;
     const categories = overview?.categories ?? [];
     const clippingsId =
@@ -534,7 +533,9 @@ export function App() {
       { key: 'secret', view: { kind: 'secret' }, label: t('Secret-book'), count: counts?.secret ?? 0, color: '#3A3A3C', ink: '#fff', icon: <Lock size={13} />, atEnd: true },
       { key: 'hidden', view: { kind: 'hidden' }, label: t('Papelera'), count: counts?.hidden ?? 0, color: '#707074', ink: '#fff', icon: <Trash2 size={13} />, atEnd: true },
     ];
-  }, [prefs.tabs, overview, t]);
+  }, [overview, t]);
+
+  const tabs = prefs.tabs ? allTabs : null;
 
   // Lo que el cuaderno muestra de los filtros: qué está filtrando y cómo quitarlo.
   // La categoría ya se ve en la solapa activa; solo hace falta si las solapas están ocultas.
@@ -612,6 +613,8 @@ export function App() {
         menuAfter={menuAfter}
         chips={chips}
         tabs={tabs}
+        allTabs={allTabs}
+        hideTabs={!prefs.tabs}
         view={view}
         onView={setView}
         actions={actions}

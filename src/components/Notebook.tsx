@@ -17,7 +17,9 @@ import {
 import {
   ArrowLeft,
   Book,
+  BookOpen,
   Check,
+  ChevronDown,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
@@ -319,6 +321,10 @@ function PageButtons(props: {
   onClose: () => void;
   onOpenMap?: () => void;
   banner?: ReactNode;
+  allTabs?: NotebookTab[];
+  view?: View;
+  onView?: (view: View) => void;
+  hideTabs?: boolean;
 }) {
   const t = useT();
   const showMapButton = Boolean(props.onOpenMap && (props.geometry.perView === 2 || props.geometry.pageWidth >= 325));
@@ -326,6 +332,38 @@ function PageButtons(props: {
   const newHint = hintOf('new');
   const searchHint = hintOf('search');
   const hideHint = hintOf('hide-window');
+
+  const currentTab = useMemo(() => {
+    if (!props.view || !props.allTabs) return undefined;
+    return props.allTabs.find((tab) => sameView(tab.view, props.view!));
+  }, [props.view, props.allTabs]);
+
+  const activeLabel = currentTab?.label ?? t('Todas');
+  const activeIcon = currentTab?.icon ? (
+    currentTab.icon
+  ) : currentTab?.color && currentTab.colorOnly ? (
+    <span className="cat-selector-dot" style={{ background: currentTab.color }} />
+  ) : (
+    <BookOpen size={14} />
+  );
+
+  const categoryMenuItems = useMemo<MenuItem[]>(() => {
+    if (!props.allTabs || !props.onView) return [];
+    return props.allTabs.map((tab, idx, arr) => {
+      const isFirstAtEnd = tab.atEnd && !arr[idx - 1]?.atEnd;
+      const isSelected = props.view ? sameView(tab.view, props.view) : false;
+      return {
+        label: tab.label,
+        icon: tab.icon ?? (tab.colorOnly ? <span className="dot" style={{ background: tab.color }} /> : <BookOpen size={14} />),
+        badge: tab.count > 0 ? tab.count : undefined,
+        checked: isSelected,
+        separator: isFirstAtEnd,
+        onSelect: () => props.onView?.(isSelected && tab.view.kind !== 'all' ? { kind: 'all' } : tab.view),
+      };
+    });
+  }, [props.allTabs, props.view, props.onView]);
+
+  const showCatLabel = Boolean(props.hideTabs && (props.geometry.perView === 2 || props.geometry.pageWidth >= 320));
 
   const controls = (
     <div className="page-controls" data-tour="controls">
@@ -381,6 +419,26 @@ function PageButtons(props: {
       >
         <Search size={15} />
       </button>
+      {categoryMenuItems.length > 0 && (
+        <Menu
+          label={t('Cambiar categoría o vista')}
+          heading={t('Categorías y vistas')}
+          align="right"
+          className={`cat-selector-btn${showCatLabel ? ' with-label' : ' icon-only icon-button'}`}
+          items={categoryMenuItems}
+          trigger={
+            <>
+              {activeIcon}
+              {showCatLabel && (
+                <>
+                  <span className="cat-selector-name">{activeLabel}</span>
+                  <ChevronDown size={11} className="cat-selector-arrow" />
+                </>
+              )}
+            </>
+          }
+        />
+      )}
       {showMapButton && (
         <button
           type="button"
@@ -506,9 +564,14 @@ function OpenSheet(props: {
   actions: NotebookActions;
   menuBefore: MenuItem[];
   menuAfter: MenuItem[];
+  navItems?: MenuItem[];
   onOpenMap?: () => void;
   noteFormat?: 'txt' | 'md';
   onSavedNote?: (detail: SheetDetail) => void;
+  allTabs?: NotebookTab[];
+  view?: View;
+  onView?: (view: View) => void;
+  hideTabs?: boolean;
 }) {
   const { sheet, active, categories, geometry: g, page, pageCount, onPages, onCaretPage, writer } = props;
   const t = useT();
@@ -518,7 +581,7 @@ function OpenSheet(props: {
   const isDraft = sheet.id === DRAFT;
   const detail = useSheetDetail(sheet, !isDraft, props.revision);
   const [showVersions, setShowVersions] = useState(false);
-  const { categoryItems, moreItems, error, restore, togglePinned, tearOff, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
+  const { categoryItems, secretItem, trashItem, actionItems, error, restore, togglePinned, tearOff, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
   const [head, headSize] = useSize<HTMLElement>();
   const flow = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLPreElement>(null);
@@ -959,26 +1022,62 @@ function OpenSheet(props: {
   const saveHint = hintOf('save');
   const tearHint = hintOf('tear-off');
   const writeItem: MenuItem = isWriting
-    ? { label: t('Guardar y terminar de escribir'), icon: <Check size={14} />, hint: finishHint, separator: true, onSelect: () => void writer.finish() }
+    ? { label: t('Guardar y terminar de escribir'), icon: <Check size={14} />, hint: finishHint, onSelect: () => void writer.finish() }
     : sheet.source === 'notepad'
       ? {
           label: t('Guardar en Folio para editar'),
           icon: <FolderDown size={14} />,
           hint: hintOf('write'),
-          separator: true,
           onSelect: () => void saveNotepadToFolio(),
         }
-      : { label: t('Escribir en esta hoja'), icon: <PenLine size={14} />, hint: hintOf('write'), separator: true, onSelect: () => startWriting('end') };
-  const sheetItems: MenuItem[] = isDraft
-    ? [writeItem]
-    : [writeItem, ...moreItems.map((item, index) => (index === 0 ? { ...item, separator: true } : item))];
+      : { label: t('Escribir en esta hoja'), icon: <PenLine size={14} />, hint: hintOf('write'), onSelect: () => startWriting('end') };
+
+  const secondaryItems: MenuItem[] = [
+    ...(props.navItems ?? []),
+    writeItem,
+    ...actionItems,
+  ];
+
+  const sheetMenu: MenuItem[] = isDraft
+    ? [
+        ...props.menuBefore,
+        writeItem,
+        ...(props.navItems && props.navItems.length > 0
+          ? [
+              {
+                type: 'collapsible' as const,
+                label: t('Más opciones…'),
+                expandedLabel: t('Menos opciones…'),
+                separator: true,
+                items: props.navItems,
+              },
+            ]
+          : []),
+        ...props.menuAfter,
+      ]
+    : [
+        ...props.menuBefore,
+        secretItem,
+        trashItem,
+        {
+          type: 'collapsible' as const,
+          label: t('Más opciones…'),
+          expandedLabel: t('Menos opciones…'),
+          separator: true,
+          items: secondaryItems,
+        },
+        ...props.menuAfter,
+      ];
+
   const draftUnsaved = isDraft && writing?.status === 'saved';
   // Dentro de la nota, las flechas del modo escritura pasan de página sin salir de ella.
   const canTurnBack = page > 0;
   const canTurnOn = page + g.perView < pageCount;
   // Con un cuaderno chico el espacio para el cartel es angosto: el cartel dice lo mismo con menos palabras.
   const leftControlsRight = (g.perView === 1 ? 38 : 8) + 64 + 8;
-  const rightActionsWidth = (g.perView === 1 ? (g.pageWidth >= 325 ? 136 : 104) + 8 : 8);
+  const showCatLabel = Boolean(props.hideTabs && (g.perView === 2 || g.pageWidth >= 320));
+  const catWidth = props.allTabs && props.allTabs.length > 0 ? (showCatLabel ? 86 : 32) : 0;
+  const rightActionsWidth = (g.perView === 1 ? (g.pageWidth >= 325 ? 136 : 104) + catWidth + 8 : 8);
   const availableRoom = g.pageWidth - leftControlsRight - rightActionsWidth;
   const snug = availableRoom < 340;
   const tight = availableRoom < 250;
@@ -1449,11 +1548,15 @@ function OpenSheet(props: {
         <PageButtons
           key="buttons"
           geometry={g}
-          menu={[...props.menuBefore, ...sheetItems, ...props.menuAfter]}
+          menu={sheetMenu}
           actions={props.actions}
           onClose={props.onClose}
           onOpenMap={props.onOpenMap}
           banner={banner}
+          allTabs={props.allTabs}
+          view={props.view}
+          onView={props.onView}
+          hideTabs={props.hideTabs}
         />
       )}
       <Presence show={showVersions}>
@@ -1473,6 +1576,10 @@ function EmptyLeaves(props: {
   onClose: () => void;
   onOpenMap?: () => void;
   children: ReactNode;
+  allTabs?: NotebookTab[];
+  view?: View;
+  onView?: (view: View) => void;
+  hideTabs?: boolean;
 }) {
   const sides: Side[] = props.geometry.perView === 2 ? ['left', 'right'] : ['only'];
   return (
@@ -1483,7 +1590,17 @@ function EmptyLeaves(props: {
           {index === 0 && <Footer geometry={props.geometry} left={<Chips chips={props.chips} />} />}
         </div>
       ))}
-      <PageButtons geometry={props.geometry} menu={props.menu} actions={props.actions} onClose={props.onClose} onOpenMap={props.onOpenMap} />
+      <PageButtons
+        geometry={props.geometry}
+        menu={props.menu}
+        actions={props.actions}
+        onClose={props.onClose}
+        onOpenMap={props.onOpenMap}
+        allTabs={props.allTabs}
+        view={props.view}
+        onView={props.onView}
+        hideTabs={props.hideTabs}
+      />
     </>
   );
 }
@@ -1527,6 +1644,8 @@ export function Notebook(props: {
   chips: FilterChip[];
   /** Solapas de filtro; `null` si el usuario las ocultó. */
   tabs: NotebookTab[] | null;
+  allTabs?: NotebookTab[];
+  hideTabs?: boolean;
   view: View;
   onView: (view: View) => void;
   actions: NotebookActions;
@@ -2446,13 +2565,12 @@ export function Notebook(props: {
   const canGoOn = pos.page + perView < pageCount || pos.sheet + 1 < sheets.length;
   const closeBook = useCallback(() => closeTo('front'), [closeTo]);
   const coverMenu = [...props.menuBefore, ...props.menuAfter];
-  const pageMenu: MenuItem[] = [
-    ...props.menuBefore,
-    { label: t('Mapa del cuaderno (Ctrl + M)'), icon: <Compass size={14} />, hint: 'Ctrl+M', onSelect: () => setMapOpen(true) },
+  const navItems: MenuItem[] = [
     { label: t('Hoja anterior'), icon: <ChevronsLeft size={14} />, hint: hintOf('sheet-prev'), onSelect: () => goSheet(-1) },
     { label: t('Hoja siguiente'), icon: <ChevronsRight size={14} />, hint: hintOf('sheet-next'), onSelect: () => goSheet(1) },
-    { label: t('Ir a la primera hoja'), icon: <ChevronFirst size={14} />, hint: hintOf('first'), separator: true, onSelect: goFirst },
+    { label: t('Ir a la primera hoja'), icon: <ChevronFirst size={14} />, hint: hintOf('first'), onSelect: goFirst },
     { label: t('Ir a la última hoja'), icon: <ChevronLast size={14} />, hint: hintOf('last'), onSelect: goLast },
+    { label: t('Mapa del cuaderno (Ctrl + M)'), icon: <Compass size={14} />, hint: 'Ctrl+M', onSelect: () => setMapOpen(true) },
   ];
 
   return (
@@ -2535,8 +2653,13 @@ export function Notebook(props: {
                   noteFormat={noteFormat}
                   revision={props.revision}
                   actions={props.actions}
-                  menuBefore={pageMenu}
+                  menuBefore={props.menuBefore}
+                  navItems={navItems}
                   menuAfter={props.menuAfter}
+                  allTabs={props.allTabs ?? props.tabs ?? []}
+                  view={props.view}
+                  onView={onView}
+                  hideTabs={props.hideTabs ?? (props.tabs === null)}
                   onSavedNote={handleSavedNote}
                 />
               ))
@@ -2548,6 +2671,10 @@ export function Notebook(props: {
                 actions={props.actions}
                 onClose={closeBook}
                 onOpenMap={() => setMapOpen(true)}
+                allTabs={props.allTabs ?? props.tabs ?? []}
+                view={props.view}
+                onView={onView}
+                hideTabs={props.hideTabs ?? (props.tabs === null)}
               >
                 {loading || sheet ? (
                   <LoaderCircle size={18} className="spin late" />

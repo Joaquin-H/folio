@@ -134,7 +134,34 @@ export function useSheetMenus(
   const togglePinned = () => run(api.setSheetPinned(sheet.id, !sheet.pinned));
   const tearOff = () => run(api.tearOffSheet(sheet.id, false));
 
-  const moreItems: MenuItem[] = [
+  const secretItem: MenuItem = sheet.secret
+    ? {
+        label: t('Quitar del secret-book'),
+        icon: <LockOpen size={14} />,
+        separator: true,
+        onSelect: () => run(api.setSheetSecret(sheet.id, false)),
+      }
+    : {
+        label: t('Mover al secret-book'),
+        icon: <Lock size={14} />,
+        separator: true,
+        onSelect: () => run(api.setSheetSecret(sheet.id, true)),
+      };
+
+  const trashItem: MenuItem = sheet.hidden
+    ? {
+        label: t('Sacar de la papelera'),
+        icon: <Undo2 size={14} />,
+        onSelect: () => run(api.setSheetHidden(sheet.id, false)),
+      }
+    : {
+        label: t('Mover a la papelera'),
+        icon: <EyeOff size={14} />,
+        danger: true,
+        onSelect: () => setAskTrash(true),
+      };
+
+  const actionItems: MenuItem[] = [
     {
       label: t('Arrancar hoja'),
       icon: <ExternalLink size={14} />,
@@ -148,7 +175,7 @@ export function useSheetMenus(
     },
   ];
   if (sheet.path && !sheet.missing) {
-    moreItems.push(
+    actionItems.push(
       {
         label: t('Abrir el original'),
         icon: <SquareArrowOutUpRight size={14} />,
@@ -161,34 +188,8 @@ export function useSheetMenus(
       },
     );
   }
-  moreItems.push(
-    sheet.secret
-      ? {
-          label: t('Quitar del secret-book'),
-          icon: <LockOpen size={14} />,
-          separator: moreItems.length > 0,
-          onSelect: () => run(api.setSheetSecret(sheet.id, false)),
-        }
-      : {
-          label: t('Mover al secret-book'),
-          icon: <Lock size={14} />,
-          separator: moreItems.length > 0,
-          onSelect: () => run(api.setSheetSecret(sheet.id, true)),
-        },
-    sheet.hidden
-      ? {
-          label: t('Sacar de la papelera'),
-          icon: <Undo2 size={14} />,
-          onSelect: () => run(api.setSheetHidden(sheet.id, false)),
-        }
-      : {
-          label: t('Mover a la papelera'),
-          icon: <EyeOff size={14} />,
-          danger: true,
-          // Un clic de más en el menú no alcanza para sacar una hoja del cuaderno.
-          onSelect: () => setAskTrash(true),
-        },
-  );
+
+  const moreItems: MenuItem[] = [...actionItems, secretItem, trashItem];
 
   const dialogs = (
     <Presence show={askTrash} exitMs={CONFIRM_OUT}>
@@ -215,6 +216,9 @@ export function useSheetMenus(
 
   return {
     categoryItems,
+    secretItem,
+    trashItem,
+    actionItems,
     moreItems,
     error,
     togglePinned,
