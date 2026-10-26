@@ -93,6 +93,8 @@ export function Menu(props: {
   className?: string;
   /** Clase extra para el contenedor, por ejemplo para posicionarlo. */
   anchorClassName?: string;
+  /** Clase extra para el menú desplegable (popover). */
+  popoverClassName?: string;
   style?: CSSProperties;
   align?: 'left' | 'right';
 }) {
@@ -127,7 +129,7 @@ export function Menu(props: {
     }
   }, []);
   return (
-    <div className={`menu${props.anchorClassName ? ` ${props.anchorClassName}` : ''}`} ref={ref}>
+    <div className={`menu${open ? ' open' : ''}${props.anchorClassName ? ` ${props.anchorClassName}` : ''}`} ref={ref}>
       <button
         type="button"
         className={props.className}
@@ -141,7 +143,11 @@ export function Menu(props: {
         {props.trigger}
       </button>
       {list.mounted && (
-        <div ref={listRef} className={`menu-list ${props.align === 'left' ? 'left' : 'right'}${list.leaving ? ' leaving' : ''}`} role="menu">
+        <div
+          ref={listRef}
+          className={`menu-list ${props.align === 'left' ? 'left' : 'right'}${list.leaving ? ' leaving' : ''}${props.popoverClassName ? ` ${props.popoverClassName}` : ''}`}
+          role="menu"
+        >
           {props.heading && <div className="menu-heading">{props.heading}</div>}
           {props.items.map((item) =>
             'choices' in item ? (

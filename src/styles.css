@@ -491,7 +491,7 @@ html[data-frame='none'] .cover,
   top: 0;
   bottom: 0;
   left: 46px;
-  z-index: 1;
+  z-index: 2;
   width: 1px;
   background: var(--margin-line);
   content: '';
@@ -608,7 +608,10 @@ html[data-frame='none'] .cover,
    y por debajo de los botones del papel. */
 .turn-zone {
   position: absolute;
-  z-index: 2;
+  top: 0;
+  bottom: 0;
+  z-index: 15;
+  pointer-events: auto;
 }
 
 .turn-zone.prev {
@@ -637,8 +640,8 @@ html[data-frame='none'] .cover,
   pointer-events: none;
 }
 
-/* Encabezado de la nota: tapa el rayado de los renglones que ocupa. Deja pasar los
-   clics a la hoja salvo en sus propios controles. */
+/* Encabezado de la nota: integrado con el papel cálido y atravesado por el margen rojo.
+   Deja pasar los clics a la hoja salvo en sus propios controles. */
 .page-head,
 .page-header {
   position: absolute;
@@ -646,7 +649,7 @@ html[data-frame='none'] .cover,
   left: 0;
   z-index: 20;
   padding-bottom: 6px;
-  background: inherit;
+  background: transparent;
   pointer-events: none;
   transition: opacity 0.09s ease;
   animation: fade 0.24s ease;
@@ -767,7 +770,7 @@ html[data-frame='none'] .cover,
   opacity: 1;
 }
 
-/* Línea 3: Acciones (Fijar, Arrancar, Versiones) */
+/* Línea 3: Acciones (Categoría, Fijar, Arrancar, Versiones) */
 .page-actions-row {
   display: flex;
   flex-wrap: wrap;
@@ -778,6 +781,28 @@ html[data-frame='none'] .cover,
   pointer-events: auto;
   position: relative;
   z-index: 20;
+}
+
+/* Selector y menú desplegable de categoría de la hoja en la fila de acciones */
+.cat-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.cat-picker.open,
+.cat-picker:has([aria-expanded='true']),
+.cat-picker:focus-within {
+  z-index: 50;
+}
+
+.cat-pop,
+.cat-picker .menu-list {
+  z-index: 100 !important;
+}
+
+.cat-arrow {
+  flex: none;
+  margin-left: 1px;
 }
 
 /* Encabezado centrado de la hoja: alineación coherente en las 3 filas */
@@ -1004,6 +1029,7 @@ html[data-frame='none'] .cover,
 .page-foot {
   position: absolute;
   bottom: 8px;
+  z-index: 20;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -1027,6 +1053,8 @@ html[data-frame='none'] .cover,
 /* Navegación de hojas y páginas al pie */
 .sheet-nav-group,
 .page-nav-group {
+  position: relative;
+  z-index: 20;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -1034,6 +1062,8 @@ html[data-frame='none'] .cover,
 }
 
 .nav-btn {
+  position: relative;
+  z-index: 20;
   display: inline-flex;
   align-items: center;
   justify-content: center;
