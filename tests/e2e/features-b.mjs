@@ -396,6 +396,10 @@ test('feature 9b: arrancar hoja desde menú y atajo, múltiples hojas sin duplic
   // 1. Arrancar la primera hoja (Pendientes de hoy, id 2) desde el menú ⋯ -> «Arrancar hoja»
   await page.clickOn('.page-actions button[aria-label="Menú"]');
   await page.until(async () => (await page.ask('count', '[role="menuitem"]')) > 0, 'no se abrió el menú de la hoja');
+  if (await page.ask('count', '.menu-collapsible-trigger')) {
+    await page.clickOn('.menu-collapsible-trigger');
+    await sleep(150);
+  }
   await page.clickOn('[role="menuitem"]', 'Arrancar hoja');
 
   await page.until(
@@ -422,8 +426,11 @@ test('feature 9b: arrancar hoja desde menú y atajo, múltiples hojas sin duplic
   await page.until(async () => (await page.ask('label', '.page-title')) === 'reunion-equipo.md', 'no cargó el título de la hoja arrancada 3');
   equal(await page.ask('label', '.page-title'), 'reunion-equipo.md', 'el título de la hoja arrancada coincide');
 
-  // Editar texto y verificar que se guarda en el cuaderno
-  await page.clickOn('.loose-text');
+  // Editar texto y verificar que se guarda en el cuaderno (doble clic para editar en modo lectura)
+  const ptLoose = await page.ask('center', '.loose-text');
+  if (ptLoose) await page.doubleClick(ptLoose.x, ptLoose.y);
+  else await page.clickOn('.loose-text');
+  await page.until(async () => (await page.ask('count', 'textarea.loose-text')) > 0, 'no entró en modo edición con doble clic');
   await page.type('\n- [x] Nota editada desde ventana flotante');
   await page.until(
     async () => ((await api(page, 'api.getSheet(3)'))?.content ?? '').includes('Nota editada desde ventana flotante'),

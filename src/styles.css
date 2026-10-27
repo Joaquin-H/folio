@@ -470,6 +470,11 @@ html[data-frame='none'] .cover,
   transition: background-color 0.25s ease;
 }
 
+.page:has(.menu.open),
+.page:has(.menu-list) {
+  z-index: 30;
+}
+
 .page.left {
   border-radius: 8px 2px 2px 8px;
   box-shadow: -2px 0 0 -0.5px var(--paper-edge), -4px 0 0 -1px var(--paper-edge);

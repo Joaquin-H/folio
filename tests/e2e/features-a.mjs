@@ -232,19 +232,22 @@ test('3. Modo bolsillo sin overlap: controles, buscador, indicador y carteles no
     [...document.querySelectorAll('.page-actions > *')].map((el) =>
       el.classList.contains('page-actions-sep')
         ? 'sep'
-        : el.classList.contains('menu')
-          ? 'menu'
-          : el.getAttribute('aria-label')
+        : el.querySelector('.cat-selector-btn')
+          ? 'cat-picker'
+          : el.classList.contains('menu')
+            ? 'menu'
+            : el.getAttribute('aria-label')
     )
   `);
   equal(rightOrder[0], 'Nueva hoja', 'primer botón derecho: Nueva hoja');
   equal(rightOrder[1], 'Buscar y filtrar', 'segundo botón derecho: Buscar y filtrar');
-  equal(rightOrder[2], 'Mapa del cuaderno (Ctrl + M)', 'tercer botón derecho: Mapa');
-  equal(rightOrder[3], 'sep', 'separador antes del menú ⋯');
-  equal(rightOrder[4], 'menu', 'menú ⋯ al final');
+  equal(rightOrder[2], 'cat-picker', 'tercer botón derecho: selector de categorías');
+  equal(rightOrder[3], 'Mapa del cuaderno (Ctrl + M)', 'cuarto botón derecho: Mapa');
+  equal(rightOrder[4], 'sep', 'separador antes del menú ⋯');
+  equal(rightOrder[5], 'menu', 'menú ⋯ al final');
 
   // Abrir menú ⋯ a 390px de alto y verificar que el último ítem ("Cerrar Folio") es visible dentro del viewport
-  await page.clickOn('.page-actions .menu > button');
+  await page.clickOn('.page-actions button[aria-label="Menú"]');
   await page.until(() => page.ask('count', '.page-actions .menu-list'), 'el menú ⋯ no se abrió a 390px de alto');
   await sleep(160);
 

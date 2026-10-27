@@ -382,8 +382,11 @@ test('7. Arrancar hoja flotante, minimizar al dock centrado, mover y expandir', 
   await page.until(async () => (await page.ask('count', '.tearoff-sheet')) > 0, 'no cargó la ventana flotante');
   await page.until(async () => (await page.ask('label', '.page-title')) === 'reunion-equipo.md', 'no cargó el título de la hoja 3');
 
-  // Editar texto en la hoja flotante
-  await page.clickOn('.loose-text');
+  // Editar texto en la hoja flotante (doble clic para entrar en modo edición)
+  const pt = await page.ask('center', '.loose-text');
+  if (pt) await page.doubleClick(pt.x, pt.y);
+  else await page.clickOn('.loose-text');
+  await page.until(async () => (await page.ask('count', 'textarea.loose-text')) > 0, 'no entró en modo edición con doble clic');
   await page.type('\n- [x] Editado en ventana flotante');
   await page.settle(300);
 
@@ -404,7 +407,7 @@ test('7. Arrancar hoja flotante, minimizar al dock centrado, mover y expandir', 
   await page.until(async () => (await page.ask('count', '.tearoff-sheet')) > 0, 'la hoja flotante no se expandió');
   equal(await page.ask('count', '.tearoff-dock'), 0, 'el dock no debe verse al estar expandida');
 
-  const looseText = await page.evaluate("document.querySelector('.loose-text')?.value ?? ''");
+  const looseText = await page.evaluate("document.querySelector('.loose-text')?.value || document.querySelector('.loose-text')?.textContent || ''");
   check(looseText.includes('Editado en ventana flotante'), 'el texto editado debe persistir en la hoja flotante');
 
   // Devolver al cuaderno
