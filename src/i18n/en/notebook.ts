@@ -202,4 +202,10 @@ export const notebook: Record<string, string> = {
   'Todas ({total})': 'All ({total})',
   'No hay hojas que coincidan con este filtro.': 'No sheets match this filter.',
   'Hoja sin contenido adicional': 'Sheet without additional content',
+
+  // Menú y selector de categorías
+  'Más opciones…': 'More options…',
+  'Menos opciones…': 'Fewer options…',
+  'Cambiar categoría o vista': 'Change category or view',
+  'Categorías y vistas': 'Categories and views',
 };

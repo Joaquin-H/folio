@@ -1279,6 +1279,68 @@ html[data-frame='none'] .cover,
   color: var(--label);
 }
 
+.cat-selector-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--label-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.cat-selector-btn:hover,
+.cat-selector-btn[aria-expanded='true'],
+.page-actions .menu > .cat-selector-btn:hover,
+.page-actions .menu > .cat-selector-btn[aria-expanded='true'] {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.page-actions .menu > .cat-selector-btn {
+  color: var(--label-2);
+}
+
+.cat-selector-btn.icon-only {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.cat-selector-name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--label);
+}
+
+.cat-selector-arrow {
+  flex: none;
+  opacity: 0.6;
+}
+
+.cat-selector-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.cat-selector-dot.unset-dot {
+  border: 1.5px dashed var(--label-3);
+  background: none;
+}
+
 /* La tapa y la contratapa del cuaderno cerrado están en styles/cover.css. */
 
 /* espiral de la vista de una hoja */
@@ -1734,6 +1796,76 @@ input:not([type='color']):not([type='search']):focus {
 
 .menu-item:hover kbd {
   color: color-mix(in srgb, var(--on-accent) 75%, transparent);
+}
+
+.menu-collapsible-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-collapsible-group.separated {
+  margin-top: 9px;
+}
+
+.menu-collapsible-group.separated::before {
+  position: absolute;
+  top: -5px;
+  right: 6px;
+  left: 6px;
+  height: 0.5px;
+  background: var(--hairline);
+  content: '';
+}
+
+.menu-list.compact .menu-collapsible-group.separated {
+  margin-top: 4px;
+}
+
+.menu-list.compact .menu-collapsible-group.separated::before {
+  top: -2.5px;
+}
+
+.menu-collapsible-content {
+  display: flex;
+  flex-direction: column;
+  padding-left: 4px;
+  margin-left: 6px;
+  border-left: 1px solid var(--hairline);
+  margin-top: 2px;
+  margin-bottom: 2px;
+  animation: fade 0.15s ease-out;
+}
+
+.menu-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--label-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.menu-item:hover .menu-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+}
+
+.menu-check {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.menu-badge + .menu-check {
+  margin-left: 6px;
+}
+
+.menu-item:hover .menu-check {
+  color: var(--on-accent);
 }
 
 /* ---- hojas modales ----------------------------------------------------- */
