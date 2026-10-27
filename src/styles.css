@@ -996,6 +996,7 @@ html[data-frame='none'] .cover,
   overflow: hidden;
   pointer-events: none;
   transition: opacity 0.09s ease;
+  z-index: 15;
 }
 
 /* Nota que ya no se ve pero conserva una selección empezada en ella. */
@@ -3109,10 +3110,15 @@ kbd.keys {
   background: var(--fill);
   letter-spacing: 0.01em;
   user-select: none;
-  pointer-events: none;
+  cursor: pointer;
+  pointer-events: auto;
   transition:
     color 0.15s ease,
     background-color 0.15s ease;
+}
+
+.loose-edit-badge:hover {
+  background: var(--fill-hover, var(--fill-strong));
 }
 
 .loose-edit-badge.active {
@@ -3185,6 +3191,28 @@ kbd.keys {
 
 .loose-text::placeholder {
   color: var(--label-3);
+}
+
+.loose-text.read-mode {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  cursor: grab;
+  user-select: text;
+}
+
+.loose-text.read-mode:active {
+  cursor: grabbing;
+}
+
+.loose-text.read-mode:focus-visible {
+  outline: none;
+}
+
+.loose-text.read-mode .loose-placeholder {
+  color: var(--label-3);
+  font-style: italic;
+  pointer-events: none;
 }
 
 .loose .form-error {

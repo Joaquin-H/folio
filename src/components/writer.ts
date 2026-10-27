@@ -287,8 +287,10 @@ export function useWriter(events: WriterEvents) {
       s.text = content;
       s.savedText = content;
       if (hash) s.hash = hash;
+      setRecent((current) => (current && current.id === id ? { id, text: content, hash } : current));
+    } else {
+      setRecent((current) => (current && current.id === id ? null : current));
     }
-    setRecent((current) => (current && current.id === id ? { id, text: content, hash } : current));
   }, []);
 
   return useMemo(

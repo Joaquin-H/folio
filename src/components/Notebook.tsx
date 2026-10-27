@@ -643,7 +643,8 @@ function OpenSheet(props: {
   // Papelera y secret-book se distinguen a simple vista del resto del cuaderno.
   const mode = sheet.hidden ? 'trash' : sheet.secret ? 'secret' : '';
   // El encabezado ocupa renglones enteros para que el texto arranque sobre el rayado.
-  const spacer = Math.ceil(headSize.height / g.line) * g.line;
+  const maxSpacer = Math.max(0, g.bodyHeight - g.line * 2);
+  const spacer = Math.min(maxSpacer, Math.ceil(headSize.height / g.line) * g.line);
 
   /** Por qué esta hoja no se puede escribir desde Book, si es el caso. */
   const locked = sheet.hidden
@@ -790,7 +791,7 @@ function OpenSheet(props: {
       if (document.querySelector('.backdrop')) return;
       if (!isDraft && matches(event, 'tear-off')) {
         event.preventDefault();
-        void (isWriting ? writer.flush() : Promise.resolve()).then(() => tearOff());
+        void (isWriting ? writer.finish() : Promise.resolve()).then(() => tearOff());
         return;
       }
       // Enter sobre un botón o un campo es de ese control, no de la hoja.
@@ -1333,7 +1334,7 @@ function OpenSheet(props: {
                       <button
                         type="button"
                         className="chip meta-btn tear-btn"
-                        onClick={() => void (isWriting ? writer.flush() : Promise.resolve()).then(() => tearOff())}
+                        onClick={() => void (isWriting ? writer.finish() : Promise.resolve()).then(() => tearOff())}
                         aria-label={t('Arrancar hoja')}
                         title={tearHint ? `${t('Arrancar hoja')} (${tearHint})` : t('Arrancar hoja')}
                       >
