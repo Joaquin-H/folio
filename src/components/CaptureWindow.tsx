@@ -90,7 +90,7 @@ export function CaptureWindow() {
     return api.onChanged(loadCategories);
   }, []);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
+  const [isEditing, setIsEditing] = useState(() => !text.trim() && !title.trim());
   const [error, setError] = useState<string | null>(null);
   /** Se tocó «Descartar» con texto escrito: falta el segundo clic que lo confirma. */
   const [discarding, setDiscarding] = useState(false);
@@ -570,7 +570,6 @@ export function CaptureWindow() {
     );
   }
 
-  const isEditing = isFocused;
   const hasContent = Boolean(text.trim() || title.trim());
 
   return (
@@ -580,8 +579,28 @@ export function CaptureWindow() {
           <span data-tauri-drag-region style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span data-tauri-drag-region>{heading.title}, {heading.subtitle}</span>
             <div
+              role="button"
+              tabIndex={0}
               className={`loose-edit-badge${isEditing ? ' active' : ''}${busy.current ? ' saving' : ''}`}
               title={busy.current ? t('Guardando…') : isEditing ? t('Editando') : hasContent ? t('Guardado') : ''}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (isEditing) {
+                  if (text.trim() || title.trim()) setIsEditing(false);
+                } else {
+                  setIsEditing(true);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (isEditing) {
+                    if (text.trim() || title.trim()) setIsEditing(false);
+                  } else {
+                    setIsEditing(true);
+                  }
+                }
+              }}
             >
               <PenLine size={11} className="loose-edit-icon" />
               <span>{busy.current ? t('Guardando…') : isEditing ? t('Editando') : hasContent ? t('Guardado') : ''}</span>
@@ -596,7 +615,8 @@ export function CaptureWindow() {
                   className="icon-button icon-btn small dict-btn"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    areaRef.current?.focus();
+                    setIsEditing(true);
+                    setTimeout(() => areaRef.current?.focus(), 0);
                     void api.startDictation().catch(() => {});
                   }}
                   aria-label={dictationLabel}
@@ -640,8 +660,20 @@ export function CaptureWindow() {
             spellCheck={false}
             aria-label={t('Título de la hoja')}
             placeholder={titleFromContent(text) || t('Sin título')}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onFocus={() => {
+              setIsEditing(true);
+            }}
+            onBlur={(e) => {
+              const next = e.relatedTarget as HTMLElement | null;
+              if (!next || !next.closest('.loose-text, .page-title')) {
+                if (text.trim() || title.trim()) setIsEditing(false);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.currentTarget.blur();
+              }
+            }}
             onChange={(event) => setTitle(event.target.value)}
           />
           <span>.{noteFormat}</span>
@@ -666,24 +698,55 @@ export function CaptureWindow() {
           />
         </div>
       </header>
-      <textarea
-        ref={areaRef}
-        className="loose-text"
-        autoFocus
-        value={text}
-        spellCheck={false}
-        placeholder={t('Escribí acá…')}
-        aria-label={t('Texto de la hoja')}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        onKeyDown={(event) => {
-          playKeySound(event);
-        }}
-        onChange={(event) => {
-          setText(event.target.value);
-          setDiscarding(false);
-        }}
-      />
+      {isEditing ? (
+        <textarea
+          ref={areaRef}
+          className="loose-text"
+          autoFocus
+          value={text}
+          spellCheck={false}
+          placeholder={t('Escribí acá…')}
+          aria-label={t('Texto de la hoja')}
+          onFocus={() => setIsEditing(true)}
+          onBlur={(e) => {
+            const next = e.relatedTarget as HTMLElement | null;
+            if (!next || !next.closest('.loose-text, .page-title')) {
+              if (text.trim() || title.trim()) setIsEditing(false);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              if (text.trim() || title.trim()) {
+                event.preventDefault();
+                setIsEditing(false);
+                return;
+              }
+            }
+            playKeySound(event);
+          }}
+          onChange={(event) => {
+            setText(event.target.value);
+            setDiscarding(false);
+          }}
+        />
+      ) : (
+        <div
+          className="loose-text read-mode"
+          data-tauri-drag-region
+          tabIndex={0}
+          role="textbox"
+          aria-label={t('Texto de la hoja')}
+          onDoubleClick={() => setIsEditing(true)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === 'F2') {
+              event.preventDefault();
+              setIsEditing(true);
+            }
+          }}
+        >
+          {text || <span className="loose-placeholder">{t('Escribí acá…')}</span>}
+        </div>
+      )}
       {error && <p className="form-error">{error}</p>}
       <footer className="loose-foot">
         {discarding ? (
@@ -794,7 +857,7 @@ export function TearOffWindow() {
   const [returned, setReturned] = useState(false);
 
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const dirtyRef = useRef(false);
   const baseHashRef = useRef<string | undefined>(undefined);
   const saveTimerRef = useRef<number | null>(null);
@@ -839,8 +902,17 @@ export function TearOffWindow() {
 
   useEffect(() => {
     loadData();
-    return api.onChanged(loadData);
-  }, [loadData]);
+    const stopChanged = api.onChanged(loadData);
+    const stopClipping = api.onClippingSaved((payload) => {
+      if (!payload.sheetId || payload.sheetId === sheetId) {
+        loadData();
+      }
+    });
+    return () => {
+      stopChanged();
+      stopClipping();
+    };
+  }, [loadData, sheetId]);
 
   // Sincronizar estado inicial desde `listTornOffSheets` (por si se restauró colapsada o fijada).
   useEffect(() => {
@@ -1260,7 +1332,6 @@ export function TearOffWindow() {
     );
   }
 
-  const isEditing = isFocused;
   const ts = detail?.modifiedAt ?? Date.now();
   const heading = dayHeading(ts);
   const ext = detail ? extensionOf(detail.title) : '';
@@ -1277,8 +1348,34 @@ export function TearOffWindow() {
           <span data-tauri-drag-region style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span data-tauri-drag-region>{heading.title}, {heading.subtitle}</span>
             <div
+              role="button"
+              tabIndex={0}
               className={`loose-edit-badge${isEditing ? ' active' : ''}${status === 'saving' ? ' saving' : ''}`}
               title={status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (editable) {
+                  if (isEditing) {
+                    setIsEditing(false);
+                    void flushSave();
+                  } else {
+                    setIsEditing(true);
+                  }
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (editable) {
+                    if (isEditing) {
+                      setIsEditing(false);
+                      void flushSave();
+                    } else {
+                      setIsEditing(true);
+                    }
+                  }
+                }
+              }}
             >
               <PenLine size={11} className="loose-edit-icon" />
               <span>{status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}</span>
@@ -1296,7 +1393,8 @@ export function TearOffWindow() {
                     className="icon-button icon-btn small dict-btn"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      areaRef.current?.focus();
+                      setIsEditing(true);
+                      setTimeout(() => areaRef.current?.focus(), 0);
                       void api.startDictation().catch(() => {});
                     }}
                     aria-label={dictationLabel}
@@ -1341,14 +1439,24 @@ export function TearOffWindow() {
               spellCheck={false}
               aria-label={t('Título de la hoja')}
               placeholder={titleFromContent(text) || t('Sin título')}
-              onFocus={() => setIsFocused(true)}
+              onFocus={() => {
+                setIsEditing(true);
+              }}
               onChange={(event) => {
                 setTitle(event.target.value);
                 scheduleSave();
               }}
-              onBlur={() => {
-                setIsFocused(false);
+              onBlur={(e) => {
                 void flushSave();
+                const next = e.relatedTarget as HTMLElement | null;
+                if (!next || !next.closest('.loose-text, .page-title')) {
+                  setIsEditing(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.currentTarget.blur();
+                }
               }}
             />
             <span>{ext || '.txt'}</span>
@@ -1376,29 +1484,61 @@ export function TearOffWindow() {
           />
         </div>
       </header>
-      <textarea
-        ref={areaRef}
-        className="loose-text"
-        autoFocus
-        readOnly={!editable}
-        value={text}
-        spellCheck={false}
-        placeholder={t('Escribí acá…')}
-        aria-label={t('Texto de la hoja')}
-        onFocus={() => setIsFocused(true)}
-        onKeyDown={(event) => {
-          if (editable) playKeySound(event);
-        }}
-        onChange={(event) => {
-          if (!editable) return;
-          setText(event.target.value);
-          scheduleSave();
-        }}
-        onBlur={() => {
-          setIsFocused(false);
-          void flushSave();
-        }}
-      />
+      {isEditing ? (
+        <textarea
+          ref={areaRef}
+          className="loose-text"
+          autoFocus
+          readOnly={!editable}
+          value={text}
+          spellCheck={false}
+          placeholder={t('Escribí acá…')}
+          aria-label={t('Texto de la hoja')}
+          onFocus={() => setIsEditing(true)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setIsEditing(false);
+              void flushSave();
+              return;
+            }
+            if (editable) playKeySound(event);
+          }}
+          onChange={(event) => {
+            if (!editable) return;
+            setText(event.target.value);
+            scheduleSave();
+          }}
+          onBlur={(e) => {
+            void flushSave();
+            const next = e.relatedTarget as HTMLElement | null;
+            if (!next || !next.closest('.loose-text, .page-title')) {
+              setIsEditing(false);
+            }
+          }}
+        />
+      ) : (
+        <div
+          className="loose-text read-mode"
+          data-tauri-drag-region
+          tabIndex={0}
+          role="textbox"
+          aria-readonly={!editable}
+          aria-label={t('Texto de la hoja')}
+          onDoubleClick={() => {
+            if (editable) setIsEditing(true);
+          }}
+          onKeyDown={(event) => {
+            if (!editable) return;
+            if (event.key === 'Enter' || event.key === 'F2') {
+              event.preventDefault();
+              setIsEditing(true);
+            }
+          }}
+        >
+          {text || <span className="loose-placeholder">{t('Escribí acá…')}</span>}
+        </div>
+      )}
       {error && <p className="form-error">{error}</p>}
       <footer className="loose-foot">
         <span className="loose-hint" role="status">
