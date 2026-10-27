@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Book,
   Check,
+  ChevronDown,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
@@ -299,13 +300,11 @@ function Chips(props: { chips: FilterChip[] }) {
  */
 function TurnZones(props: { geometry: Geometry; canGoOn: boolean }) {
   const { geometry: g } = props;
-  const turnTop = Math.max(TOP + 100, 135);
-  const turnHeight = Math.max(60, g.bodyHeight - (turnTop - TOP));
   return (
     <>
-      <div className="turn-zone prev" style={{ top: turnTop, width: g.turnBack, height: turnHeight }} aria-hidden="true" data-tour="turn-prev" />
+      <div className="turn-zone prev" style={{ top: 0, bottom: 0, width: g.turnBack }} aria-hidden="true" data-tour="turn-prev" />
       {props.canGoOn && (
-        <div className="turn-zone next" style={{ top: turnTop, width: g.turnOn, height: turnHeight }} aria-hidden="true" data-tour="turn-next" />
+        <div className="turn-zone next" style={{ top: 0, bottom: 0, width: g.turnOn }} aria-hidden="true" data-tour="turn-next" />
       )}
     </>
   );
@@ -1150,7 +1149,7 @@ function OpenSheet(props: {
                   )}
                 </div>
 
-                {/* Línea 2: Fecha · Guardado · Etiqueta/categoría */}
+                {/* Línea 2: Fecha · Guardado · Etiquetas */}
                 <div className="page-date page-meta-row" data-tauri-drag-region>
                   <div className="page-meta" data-tauri-drag-region>
                     <span className="page-date-main meta-item" data-tauri-drag-region title={`${dateText} ${timeOf(sheet.modifiedAt)}`}>
@@ -1158,36 +1157,10 @@ function OpenSheet(props: {
                       <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
                     </span>
                     <span className="meta-sep" aria-hidden="true">·</span>
-                    <span className="sheet-chip meta-item" title={props.counter}>
-                      <span className="sheet-indicator-accent" aria-hidden="true" />
-                      <span className="meta-text">{props.counter}</span>
-                    </span>
-                    <span className="meta-sep" aria-hidden="true">·</span>
                     <span className="page-source meta-item" title={sourceText}>
                       <Icon size={12} />
                       <span className="meta-text">{sourceText}</span>
                     </span>
-                    <span className="meta-sep" aria-hidden="true">·</span>
-                    <Menu
-                      label={t('Cambiar la categoría de esta hoja')}
-                      heading={t('Categoría de esta hoja')}
-                      align="left"
-                      className={`chip meta-btn category-chip${category ? '' : ' unset'}`}
-                      items={categoryItems}
-                      trigger={
-                        category ? (
-                          <>
-                            <span className="dot" style={{ background: category.color }} />
-                            <span className="meta-text">{category.name}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="dot unset-dot" />
-                            <span className="meta-text">{t('Sin categoría')}</span>
-                          </>
-                        )
-                      }
-                    />
                     {front?.source && (
                       <>
                         <span className="meta-sep" aria-hidden="true">·</span>
@@ -1209,8 +1182,32 @@ function OpenSheet(props: {
                   </div>
                 </div>
 
-                {/* Línea 3: Acciones */}
+                {/* Línea 3: Acciones (Categoría, Fijar, Arrancar, Versiones) */}
                 <div className="page-actions-row">
+                  <Menu
+                    label={t('Cambiar la categoría de esta hoja')}
+                    heading={t('Categoría de esta hoja')}
+                    align="left"
+                    anchorClassName="cat-picker"
+                    popoverClassName="cat-pop"
+                    className={`chip meta-btn category-chip${category ? '' : ' unset'}`}
+                    items={categoryItems}
+                    trigger={
+                      category ? (
+                        <>
+                          <span className="dot" style={{ background: category.color }} />
+                          <span className="meta-text">{category.name}</span>
+                          <ChevronDown size={11} className="cat-arrow" style={{ opacity: 0.6 }} />
+                        </>
+                      ) : (
+                        <>
+                          <span className="dot unset-dot" />
+                          <span className="meta-text">{t('Sin categoría')}</span>
+                          <ChevronDown size={11} className="cat-arrow" style={{ opacity: 0.6 }} />
+                        </>
+                      )
+                    }
+                  />
                   {sheet.source === 'notepad' && (
                     <button
                       type="button"
@@ -2292,6 +2289,11 @@ export function Notebook(props: {
     if (swipe) nudge(null);
   };
 
+  const canGoPrevSheet = pos.sheet > 0 || pos.page > 0;
+  const canGoNextSheet = pos.sheet + 1 < sheets.length || !done;
+  /** Queda algo adelante: más páginas de esta nota u otra hoja. */
+  const canGoOn = pos.page + perView < pageCount || pos.sheet + 1 < sheets.length;
+
   /**
    * Leyendo, solo pasa página un clic en las franjas de los bordes de afuera (`TurnZones`):
    * en el resto de la hoja un clic no hace nada, y por eso no hay que esperar para saber si
@@ -2316,7 +2318,22 @@ export function Notebook(props: {
       return placeCaretNear(editing, event.clientX, event.clientY, { left, right: left + g.column, top, bottom: top + g.bodyHeight });
     }
     const zone = target.closest('.turn-zone');
-    if (zone) go(zone.classList.contains('prev') ? -1 : 1);
+    if (zone) {
+      go(zone.classList.contains('prev') ? -1 : 1);
+      return;
+    }
+    // Clic simple en los bordes y esquinas de la hoja para pasar página:
+    if (!target.closest(`.page-text, .page-head, .page-bar, .page-foot, ${CONTROLS}`)) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < rect.left + geometry.turnBack) {
+        go(-1);
+        return;
+      }
+      if ((canGoOn || done) && event.clientX > rect.right - geometry.turnOn) {
+        go(1);
+        return;
+      }
+    }
   };
 
   /**
@@ -2439,11 +2456,7 @@ export function Notebook(props: {
       ? t('Hoja {n} de {total}', { n: count(pos.sheet + 1), total: count(Math.max(total, pos.sheet + 1)) })
       : t('Hoja {n}', { n: count(pos.sheet + 1) })
     : '';
-  const canGoPrevSheet = pos.sheet > 0 || pos.page > 0;
-  const canGoNextSheet = pos.sheet + 1 < sheets.length || !done;
   const mounted = sheets.filter((item, index) => index === pos.sheet || retained.includes(item.id));
-  /** Queda algo adelante: más páginas de esta nota u otra hoja. */
-  const canGoOn = pos.page + perView < pageCount || pos.sheet + 1 < sheets.length;
   const closeBook = useCallback(() => closeTo('front'), [closeTo]);
   const coverMenu = [...props.menuBefore, ...props.menuAfter];
   const pageMenu: MenuItem[] = [
