@@ -49,44 +49,54 @@ export function sourceLabel(sheet: SheetSummary): string {
 }
 
 /** Contenido completo y versiones de una hoja; se recarga cuando la hoja cambia. */
-export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, revision?: number): SheetDetail | null {
+export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true): SheetDetail | null {
   const [detail, setDetail] = useState<SheetDetail | null>(null);
   const id = sheet?.id;
   const stamp = sheet ? `${sheet.modifiedAt}:${sheet.versionCount}` : '';
-  useEffect(() => {
-    if (id === undefined || !enabled) return;
-    let alive = true;
-    api
-      .getSheet(id)
-      .then((result) => alive && setDetail(result))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [id, stamp, enabled, revision]);
 
   useEffect(() => {
     if (id === undefined || !enabled) return;
     let alive = true;
+    let coalescingTimer: number | null = null;
+    let inFlight: Promise<SheetDetail | null> | null = null;
+
     const fetchFresh = () => {
       if (!alive) return;
-      api
-        .getSheet(id)
-        .then((result) => alive && setDetail(result))
-        .catch(() => {});
+      if (coalescingTimer !== null) return;
+      coalescingTimer = window.setTimeout(() => {
+        coalescingTimer = null;
+        if (!alive) return;
+        if (inFlight) return;
+        inFlight = api
+          .getSheet(id)
+          .then((result) => {
+            if (alive) setDetail(result);
+            return result;
+          })
+          .catch(() => null)
+          .finally(() => {
+            inFlight = null;
+          });
+      }, 16);
     };
+
+    api
+      .getSheet(id)
+      .then((result) => alive && setDetail(result))
+      .catch(() => {});
+
     const stopClip = api.onClippingSaved((payload) => {
       if (!payload.sheetId || payload.sheetId === id) {
         fetchFresh();
       }
     });
-    const stopChanged = api.onChanged(fetchFresh);
+
     return () => {
       alive = false;
+      if (coalescingTimer !== null) window.clearTimeout(coalescingTimer);
       stopClip();
-      stopChanged();
     };
-  }, [id, enabled]);
+  }, [id, stamp, enabled]);
 
   return detail && detail.id === id ? detail : null;
 }

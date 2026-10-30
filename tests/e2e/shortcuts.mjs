@@ -141,6 +141,11 @@ async function menuHints(page) {
   await page.clickOn('.page-actions .menu > button');
   await page.until(() => page.ask('count', '.page-actions .menu-list'), 'el menú de la hoja no se abrió');
   await sleep(200);
+  const more = await page.ask('count', '.page-actions .menu-collapsible-trigger');
+  if (more) {
+    await page.clickOn('.page-actions .menu-collapsible-trigger');
+    await sleep(150);
+  }
   const hints = await page.evaluate(`Object.fromEntries([...document.querySelectorAll('.page-actions .menu-item')].map((e) => [e.querySelector('.menu-label')?.textContent, e.querySelector('kbd')?.textContent ?? null]))`);
   await press(page, KEYS.escape);
   await sleep(250);

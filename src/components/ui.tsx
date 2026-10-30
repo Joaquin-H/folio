@@ -108,6 +108,7 @@ export function Menu(props: {
   popoverClassName?: string;
   style?: CSSProperties;
   align?: 'left' | 'right';
+  containerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
@@ -218,8 +219,9 @@ export function Menu(props: {
     );
   };
 
+  const baseClass = props.containerClassName ?? 'menu';
   return (
-    <div className={`menu${open ? ' open' : ''}${props.anchorClassName ? ` ${props.anchorClassName}` : ''}`} ref={ref}>
+    <div className={`${baseClass}${open ? ' open' : ''}${props.anchorClassName ? ` ${props.anchorClassName}` : ''}`} ref={ref}>
       <button
         type="button"
         className={props.className}

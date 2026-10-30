@@ -335,6 +335,13 @@ function makeSteps(globals: Globals, t: (key: string, vars?: Record<string, stri
     turn: {
       needs: 'open',
       target: (scene) => (scene.bare ? emptyNotice() : rectOf('[data-tour="turn-next"]')),
+      reach: () => {
+        const next = rectOf('[data-tour="turn-next"]');
+        const actions = rectOf('[data-tour="actions"]');
+        if (!next) return null;
+        if (!actions) return next;
+        return { ...next, top: Math.max(next.top, actions.bottom) };
+      },
       sides: ['left', 'bottom', 'top'],
       title: (scene) => (scene.bare ? t('Pasar de hoja') : t('Pasá de hoja')),
       text: (scene) =>
@@ -414,7 +421,7 @@ function makeSteps(globals: Globals, t: (key: string, vars?: Record<string, stri
     away: {
       needs: 'open',
       target: () => rectOf('[data-tour="controls"] > button:nth-child(2)'),
-      sides: ['right', 'bottom'],
+      sides: ['bottom', 'right'],
       title: () => t('Siempre a mano'),
       text: () => (
         <>
@@ -1205,7 +1212,23 @@ export function Tutorial(props: { replay?: number; onOpenSettings?: () => void }
         {/* Nada del cuaderno responde, salvo lo que se pide probar: ahí el resguardo se abre. */}
         {(open ? blocks(open) : [{ inset: 0 }]).map((style, at) => (
           // Sin soltar el foco ni la selección de quien esté atrás.
-          <div key={at} className="tour-block" style={style} onMouseDown={(event) => event.preventDefault()} />
+          <div
+            key={at}
+            className="tour-block"
+            style={style}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          />
         ))}
         <div
           ref={balloon}

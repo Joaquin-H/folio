@@ -670,10 +670,12 @@ html[data-frame='none'] .cover,
 .page-head .menu,
 .page-head .chip,
 .page-head .page-title,
+.page-head .page-actions-row,
 .page-header button,
 .page-header .menu,
 .page-header .chip,
-.page-header .page-title {
+.page-header .page-title,
+.page-header .page-actions-row {
   pointer-events: auto;
   position: relative;
   z-index: 20;
@@ -775,10 +777,16 @@ html[data-frame='none'] .cover,
   opacity: 1;
 }
 
+.page-head,
+.page-header {
+  container-type: inline-size;
+  container-name: pagehead;
+}
+
 /* Línea 3: Acciones (Categoría, Fijar, Arrancar, Versiones) */
 .page-actions-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px 6px;
   align-items: center;
   justify-content: flex-start;
@@ -786,6 +794,17 @@ html[data-frame='none'] .cover,
   pointer-events: auto;
   position: relative;
   z-index: 20;
+}
+
+@container pagehead (max-width: 460px) {
+  .page-actions-row .meta-btn .meta-text {
+    display: none;
+  }
+}
+
+.page-actions-row.compact .meta-btn .meta-text,
+.page-actions-row.icon-only .meta-btn .meta-text {
+  display: none;
 }
 
 /* Selector y menú desplegable de categoría de la hoja en la fila de acciones */
@@ -1302,14 +1321,22 @@ html[data-frame='none'] .cover,
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+.cat-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
 .cat-selector-btn:hover,
 .cat-selector-btn[aria-expanded='true'],
+.cat-dropdown > .cat-selector-btn:hover,
+.cat-dropdown > .cat-selector-btn[aria-expanded='true'],
 .page-actions .menu > .cat-selector-btn:hover,
 .page-actions .menu > .cat-selector-btn[aria-expanded='true'] {
   background: var(--fill);
   color: var(--label);
 }
 
+.cat-dropdown > .cat-selector-btn,
 .page-actions .menu > .cat-selector-btn {
   color: var(--label-2);
 }
@@ -3816,18 +3843,6 @@ html[data-window='tearoff'] #root {
 }
 
 /* ---- interacción del cuaderno ---- */
-
-/* Los controles del encabezado de la hoja quedan por encima de las franjas de pasar
-   página: si llegan hasta un borde, el clic sigue siendo de ellos. */
-.page-head .chip,
-.page-head .menu,
-.page-head .page-actions-row,
-.page-header .chip,
-.page-header .menu,
-.page-header .page-actions-row {
-  position: relative;
-  z-index: 20;
-}
 
 /* Botones de los carteles de arriba: ícono y texto en una línea, y la tecla del atajo
    escrita al lado, más tenue. */
