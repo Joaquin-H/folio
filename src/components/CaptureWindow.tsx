@@ -6,9 +6,11 @@ import { api, isTauri } from '../api';
 import { dayHeading, extensionOf, stemOf, timeOf, titleFromContent } from '../format';
 import { usePrefs } from '../hooks';
 import { useT } from '../i18n';
+import { isMarkdownName, parseMarkdown } from '../markdown';
 import { describe, hintOf, matches, useShortcuts } from '../shortcuts';
 import { playKeySound } from '../sounds';
 import type { Category, FloatingRect, SheetDetail } from '../types';
+import { checkAt, linkAt, MarkdownBlocks } from './Markdown';
 import { Menu, type MenuItem } from './ui';
 
 const closeWindow = () => {
@@ -250,7 +252,9 @@ export function CaptureWindow() {
     try {
       localStorage.setItem('folio:capture:collapsed', 'false');
     } catch {}
-    setTimeout(() => areaRef.current?.focus(), 60);
+    setTimeout(() => {
+      if (isEditing) areaRef.current?.focus();
+    }, 60);
   }, [floatingRect]);
 
   const collapse = useCallback(async () => {
@@ -698,55 +702,26 @@ export function CaptureWindow() {
           />
         </div>
       </header>
-      {isEditing ? (
-        <textarea
-          ref={areaRef}
-          className="loose-text"
-          autoFocus
-          value={text}
-          spellCheck={false}
-          placeholder={t('Escribí acá…')}
-          aria-label={t('Texto de la hoja')}
-          onFocus={() => setIsEditing(true)}
-          onBlur={(e) => {
-            const next = e.relatedTarget as HTMLElement | null;
-            if (!next || !next.closest('.loose-text, .page-title')) {
-              if (text.trim() || title.trim()) setIsEditing(false);
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              if (text.trim() || title.trim()) {
-                event.preventDefault();
-                setIsEditing(false);
-                return;
-              }
-            }
-            playKeySound(event);
-          }}
-          onChange={(event) => {
-            setText(event.target.value);
-            setDiscarding(false);
-          }}
-        />
-      ) : (
-        <div
-          className="loose-text read-mode"
-          data-tauri-drag-region
-          tabIndex={0}
-          role="textbox"
-          aria-label={t('Texto de la hoja')}
-          onDoubleClick={() => setIsEditing(true)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === 'F2') {
-              event.preventDefault();
-              setIsEditing(true);
-            }
-          }}
-        >
-          {text || <span className="loose-placeholder">{t('Escribí acá…')}</span>}
-        </div>
-      )}
+      <textarea
+        ref={areaRef}
+        className="loose-text"
+        autoFocus
+        value={text}
+        spellCheck={false}
+        placeholder={t('Escribí acá…')}
+        aria-label={t('Texto de la hoja')}
+        onFocus={() => setIsEditing(true)}
+        onBlur={() => {
+          if (!text.trim() && !title.trim()) setIsEditing(false);
+        }}
+        onKeyDown={(event) => {
+          playKeySound(event);
+        }}
+        onChange={(event) => {
+          setText(event.target.value);
+          setDiscarding(false);
+        }}
+      />
       {error && <p className="form-error">{error}</p>}
       <footer className="loose-foot">
         {discarding ? (
@@ -870,6 +845,8 @@ export function TearOffWindow() {
 
   const renamable = Boolean(detail && detail.source === 'file' && inNotesDir(detail.path, notesDir));
   const editable = Boolean(detail && !detail.hidden && !detail.missing && (detail.source === 'file' || detail.source === 'capture'));
+  const isMd = isMarkdownName(detail?.title || title);
+  const doc = useMemo(() => (isMd ? parseMarkdown(text) : null), [isMd, text]);
   latestRef.current = { title, text, renamable };
 
   useEffect(() => {
@@ -1027,7 +1004,9 @@ export function TearOffWindow() {
     try {
       localStorage.setItem(`${storagePrefix}:collapsed`, 'false');
     } catch {}
-    setTimeout(() => areaRef.current?.focus(), 60);
+    setTimeout(() => {
+      if (isEditing) areaRef.current?.focus();
+    }, 60);
   }, [storagePrefix, floatingRect]);
 
   const collapse = useCallback(async () => {
@@ -1347,39 +1326,56 @@ export function TearOffWindow() {
         <div className="page-date" data-tauri-drag-region>
           <span data-tauri-drag-region style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span data-tauri-drag-region>{heading.title}, {heading.subtitle}</span>
-            <div
-              role="button"
-              tabIndex={0}
-              className={`loose-edit-badge${isEditing ? ' active' : ''}${status === 'saving' ? ' saving' : ''}`}
-              title={status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                if (editable) {
-                  if (isEditing) {
+            {isEditing ? (
+              <div
+                role="button"
+                tabIndex={0}
+                className="loose-edit-badge active"
+                title={t('Editando')}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (editable) {
                     setIsEditing(false);
                     void flushSave();
-                  } else {
-                    setIsEditing(true);
                   }
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  if (editable) {
-                    if (isEditing) {
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (editable) {
                       setIsEditing(false);
                       void flushSave();
-                    } else {
-                      setIsEditing(true);
                     }
                   }
-                }
-              }}
-            >
-              <PenLine size={11} className="loose-edit-icon" />
-              <span>{status === 'saving' ? t('Guardando…') : isEditing ? t('Editando') : t('Guardado')}</span>
-            </div>
+                }}
+              >
+                <PenLine size={11} className="loose-edit-icon" />
+                <span>{t('Editando')}</span>
+              </div>
+            ) : status === 'saving' ? (
+              <div className="loose-edit-badge saving" title={t('Guardando…')}>
+                <span>{t('Guardando…')}</span>
+              </div>
+            ) : (
+              <div
+                role="button"
+                tabIndex={0}
+                className="loose-edit-badge saved"
+                title={t('Guardado')}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (editable) setIsEditing(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (editable) setIsEditing(true);
+                  }
+                }}
+              >
+                <span>{t('Guardado')}</span>
+              </div>
+            )}
           </span>
           <div className="capture-head-tools" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
             {editable &&
@@ -1519,12 +1515,30 @@ export function TearOffWindow() {
         />
       ) : (
         <div
-          className="loose-text read-mode"
+          className={`loose-text read-mode${doc ? ' md' : ''}`}
           data-tauri-drag-region
           tabIndex={0}
           role="textbox"
           aria-readonly={!editable}
           aria-label={t('Texto de la hoja')}
+          onClick={(event) => {
+            if (!editable) return;
+            const box = checkAt(event.target);
+            if (box) {
+              const at = box.at;
+              const mark = text[at];
+              if (mark === ' ' || mark === 'x' || mark === 'X') {
+                const nextText = `${text.slice(0, at)}${mark === ' ' ? 'x' : ' '}${text.slice(at + 1)}`;
+                setText(nextText);
+                scheduleSave();
+              }
+            }
+            const href = linkAt(event.target);
+            if (href) {
+              event.preventDefault();
+              void api.openLink(href).catch(() => {});
+            }
+          }}
           onDoubleClick={() => {
             if (editable) setIsEditing(true);
           }}
@@ -1536,13 +1550,17 @@ export function TearOffWindow() {
             }
           }}
         >
-          {text || <span className="loose-placeholder">{t('Escribí acá…')}</span>}
+          {doc ? (
+            <MarkdownBlocks doc={doc} tasks={editable} />
+          ) : (
+            text || <span className="loose-placeholder">{t('Escribí acá…')}</span>
+          )}
         </div>
       )}
       {error && <p className="form-error">{error}</p>}
       <footer className="loose-foot">
         <span className="loose-hint" role="status">
-          {status === 'saving' ? t('Guardando…') : status === 'error' ? t('No se pudo guardar') : t('Guardado')}
+          {status === 'error' ? t('No se pudo guardar') : ''}
         </span>
         <span className="loose-actions">
           <button

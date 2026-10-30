@@ -301,7 +301,7 @@ export function useWriter(events: WriterEvents) {
    * Sincroniza el contenido de la sesión cuando la hoja fue actualizada externamente (ej. recorte recibido en background).
    * Solo sincroniza si NO se está escribiendo activamente esa hoja.
    */
-  const syncExternal = useCallback((id: number, content: string, hash?: string) => {
+  const syncExternal = useCallback((id: number, _content?: string, _hash?: string) => {
     const s = session.current;
     if (s && s.id === id) {
       return;
@@ -421,57 +421,45 @@ export function setEditorCaret(node: HTMLElement, targetOffset: number) {
   if (!selection) return;
 
   let current = 0;
-  let targetNode: Node | null = null;
-  let targetNodeOffset = 0;
 
-  const walk = (parent: Node): boolean => {
+  const findTarget = (parent: Node): { node: Node; offset: number } | null => {
     if (parent.nodeType === Node.TEXT_NODE) {
       const len = (parent as Text).data.length;
       if (current + len >= targetOffset) {
-        targetNode = parent;
-        targetNodeOffset = targetOffset - current;
-        return true;
+        return { node: parent, offset: targetOffset - current };
       }
       current += len;
-      return false;
+      return null;
     }
 
     for (let i = 0; i < parent.childNodes.length; i++) {
       const child = parent.childNodes[i];
       if (child.nodeName === 'BR') {
         if (current + 1 > targetOffset) {
-          targetNode = parent;
-          targetNodeOffset = i;
-          return true;
+          return { node: parent, offset: i };
         }
         current += 1;
       } else if (child.nodeType === Node.TEXT_NODE) {
         const len = (child as Text).data.length;
         if (current + len >= targetOffset) {
-          targetNode = child;
-          targetNodeOffset = targetOffset - current;
-          return true;
+          return { node: child, offset: targetOffset - current };
         }
         current += len;
       } else {
-        if (walk(child)) return true;
+        const res = findTarget(child);
+        if (res) return res;
       }
     }
-    return false;
+    return null;
   };
 
-  walk(node);
+  const target = findTarget(node);
 
   const range = document.createRange();
-  if (targetNode) {
+  if (target) {
     try {
-      range.setStart(
-        targetNode,
-        Math.min(
-          targetNodeOffset,
-          targetNode.nodeType === Node.TEXT_NODE ? (targetNode as Text).length : targetNode.childNodes.length,
-        ),
-      );
+      const maxLen = target.node.nodeType === Node.TEXT_NODE ? (target.node as Text).length : target.node.childNodes.length;
+      range.setStart(target.node, Math.min(target.offset, maxLen));
     } catch {
       range.selectNodeContents(node);
       range.collapse(false);

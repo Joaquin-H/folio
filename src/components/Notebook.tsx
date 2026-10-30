@@ -17,7 +17,6 @@ import {
 import {
   ArrowLeft,
   Book,
-  BookOpen,
   Check,
   ChevronDown,
   ChevronFirst,
@@ -33,6 +32,7 @@ import {
   EyeOff,
   FolderDown,
   History,
+  Layers,
   LoaderCircle,
   Lock,
   Mic,
@@ -344,7 +344,7 @@ function PageButtons(props: {
   ) : currentTab?.color && currentTab.colorOnly ? (
     <span className="cat-selector-dot" style={{ background: currentTab.color }} />
   ) : (
-    <BookOpen size={14} />
+    <Layers size={14} />
   );
 
   const categoryMenuItems = useMemo<MenuItem[]>(() => {
@@ -354,7 +354,7 @@ function PageButtons(props: {
       const isSelected = props.view ? sameView(tab.view, props.view) : false;
       return {
         label: tab.label,
-        icon: tab.icon ?? (tab.colorOnly ? <span className="dot" style={{ background: tab.color }} /> : <BookOpen size={14} />),
+        icon: tab.icon ?? (tab.colorOnly ? <span className="dot" style={{ background: tab.color }} /> : <Layers size={14} />),
         badge: tab.count > 0 ? tab.count : undefined,
         checked: isSelected,
         separator: isFirstAtEnd,
@@ -424,6 +424,7 @@ function PageButtons(props: {
           label={t('Cambiar categoría o vista')}
           heading={t('Categorías y vistas')}
           align="right"
+          containerClassName="cat-dropdown"
           className={`cat-selector-btn${showCatLabel ? ' with-label' : ' icon-only icon-button'}`}
           items={categoryMenuItems}
           trigger={
@@ -727,6 +728,7 @@ function OpenSheet(props: {
       if (!payload.sheetId || payload.sheetId !== sheet.id) return;
       try {
         const fresh = await api.getSheet(sheet.id);
+        if (!fresh) return;
         const node = editor.current;
         if (!node) return;
         const currentVal = readEditor(node);
@@ -1235,6 +1237,7 @@ function OpenSheet(props: {
     ) : null;
 
   const isCompactHeader = g.pageWidth < 430;
+  const isCompactActions = g.pageWidth < 460 || isCompactHeader;
   const sourceText = isDraft ? t('Hoja nueva') : sourceLabel(sheet);
   const versionText = plural(sheet.versionCount, 'versión anterior', 'versiones anteriores');
   const dateText = relative ? `${heading.title}, ${heading.subtitle}` : `${heading.title} ${heading.subtitle}`;
@@ -1335,7 +1338,7 @@ function OpenSheet(props: {
                 </div>
 
                 {/* Línea 3: Acciones (Categoría, Fijar, Arrancar, Versiones) */}
-                <div className="page-actions-row">
+                <div className={`page-actions-row${isCompactActions ? ' compact icon-only' : ''}`}>
                   <Menu
                     label={t('Cambiar la categoría de esta hoja')}
                     heading={t('Categoría de esta hoja')}
@@ -1345,19 +1348,15 @@ function OpenSheet(props: {
                     className={`chip meta-btn category-chip${category ? '' : ' unset'}`}
                     items={categoryItems}
                     trigger={
-                      category ? (
-                        <>
+                      <span title={category ? category.name : t('Sin categoría')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {category ? (
                           <span className="dot" style={{ background: category.color }} />
-                          <span className="meta-text">{category.name}</span>
-                          <ChevronDown size={11} className="cat-arrow" style={{ opacity: 0.6 }} />
-                        </>
-                      ) : (
-                        <>
+                        ) : (
                           <span className="dot unset-dot" />
-                          <span className="meta-text">{t('Sin categoría')}</span>
-                          <ChevronDown size={11} className="cat-arrow" style={{ opacity: 0.6 }} />
-                        </>
-                      )
+                        )}
+                        <span className="meta-text">{category ? category.name : t('Sin categoría')}</span>
+                        <ChevronDown size={11} className="cat-arrow" style={{ opacity: 0.6 }} />
+                      </span>
                     }
                   />
                   {sheet.source === 'notepad' && (
