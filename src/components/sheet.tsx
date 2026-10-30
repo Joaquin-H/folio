@@ -49,7 +49,7 @@ export function sourceLabel(sheet: SheetSummary): string {
 }
 
 /** Contenido completo y versiones de una hoja; se recarga cuando la hoja cambia. */
-export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, revision?: number): SheetDetail | null {
+export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true): SheetDetail | null {
   const [detail, setDetail] = useState<SheetDetail | null>(null);
   const id = sheet?.id;
   const stamp = sheet ? `${sheet.modifiedAt}:${sheet.versionCount}` : '';
@@ -58,9 +58,9 @@ export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, 
     if (id === undefined || !enabled) return;
     let alive = true;
     let coalescingTimer: number | null = null;
-    let inFlight: Promise<SheetDetail> | null = null;
+    let inFlight: Promise<SheetDetail | null> | null = null;
 
-    const requestFetch = () => {
+    const fetchFresh = () => {
       if (!alive) return;
       if (coalescingTimer !== null) return;
       coalescingTimer = window.setTimeout(() => {
@@ -73,7 +73,7 @@ export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, 
             if (alive) setDetail(result);
             return result;
           })
-          .catch(() => ({} as SheetDetail))
+          .catch(() => null)
           .finally(() => {
             inFlight = null;
           });
@@ -87,18 +87,16 @@ export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, 
 
     const stopClip = api.onClippingSaved((payload) => {
       if (!payload.sheetId || payload.sheetId === id) {
-        requestFetch();
+        fetchFresh();
       }
     });
-    const stopChanged = api.onChanged(requestFetch);
 
     return () => {
       alive = false;
       if (coalescingTimer !== null) window.clearTimeout(coalescingTimer);
       stopClip();
-      stopChanged();
     };
-  }, [id, stamp, enabled, revision]);
+  }, [id, stamp, enabled]);
 
   return detail && detail.id === id ? detail : null;
 }

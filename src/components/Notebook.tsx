@@ -580,7 +580,7 @@ function OpenSheet(props: {
   // Los menús y los botones muestran las combinaciones vigentes: si cambian, se redibujan.
   useShortcuts();
   const isDraft = sheet.id === DRAFT;
-  const detail = useSheetDetail(sheet, !isDraft, props.revision);
+  const detail = useSheetDetail(sheet, !isDraft);
   const [showVersions, setShowVersions] = useState(false);
   const { categoryItems, secretItem, trashItem, actionItems, error, restore, togglePinned, tearOff, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
   const [head, headSize] = useSize<HTMLElement>();
@@ -1016,15 +1016,7 @@ function OpenSheet(props: {
     if (!action) return;
     event.preventDefault();
     if (action === 'finish') void writer.finish();
-    else if (action === 'save') {
-      const node = editor.current;
-      const caret = node ? getEditorCaret(node) : null;
-      void writer.flush().then(() => {
-        if (node && caret !== null && isWriting) {
-          setEditorCaret(node, caret);
-        }
-      });
-    }
+    else if (action === 'save') void writer.flush();
     else if (action === 'preview') {
       if (markdown) toggleLivePreview();
     } else if (action === 'indent') document.execCommand('insertText', false, '\t');
@@ -1750,7 +1742,8 @@ export function Notebook(props: {
     };
   }, [size.width, size.height, perView, spread, textSize]);
 
-  const [pos, setPos] = useState({ sheet: 0, page: 0 });
+  interface Pos { sheet: number; page: number }
+  const [pos, setPos] = useState<Pos>({ sheet: 0, page: 0 });
   const [pageCount, setPageCount] = useState(1);
   const [mapOpen, setMapOpen] = useState(false);
 
@@ -1925,25 +1918,34 @@ export function Notebook(props: {
   // escribiendo perdería su editor, con el cursor y lo que se tecleara en el medio. Además,
   // para cuando un efecto llegara a mover la vista, `anchor` ya apuntaría a la vecina.
   const [listed, setListed] = useState(sheets);
+  let activePos = pos;
   if (listed !== sheets) {
     setListed(sheets);
-    const kept = anchor.current;
+    const kept = writingId !== null ? writingId : anchor.current;
     // Si entraron notas nuevas adelante, se sigue mostrando la que se estaba leyendo;
     // en la primera no, porque ahí lo esperable es ver lo más reciente (salvo que se
     // la esté escribiendo: una hoja no cambia debajo del cursor).
-    const follow = kept !== null && (pos.sheet > 0 || writingId === kept);
+    const follow = kept !== null && (pos.sheet > 0 || writingId !== null);
     const found = follow ? sheets.findIndex((item) => item.id === kept) : -1;
     const clamped = Math.max(0, Math.min(pos.sheet, sheets.length - 1));
+    if (typeof window !== 'undefined') {
+      (window as any).__listedLog = (window as any).__listedLog || [];
+      (window as any).__listedLog.push({ posSheet: pos.sheet, kept, writingId, found, sheetsCount: sheets.length, firstSheetId: sheets[0]?.id });
+    }
     if (found >= 0) {
-      if (found !== pos.sheet) setPos({ sheet: found, page: pos.page });
+      if (found !== pos.sheet) {
+        setPos({ sheet: found, page: pos.page });
+        activePos = { sheet: found, page: pos.page };
+      }
     } else if (clamped !== pos.sheet) {
       setPos({ sheet: clamped, page: 0 });
+      activePos = { sheet: clamped, page: 0 };
     }
   }
 
   useEffect(() => {
-    anchor.current = sheets[pos.sheet]?.id ?? null;
-  }, [sheets, pos.sheet]);
+    anchor.current = sheets[activePos.sheet]?.id ?? null;
+  }, [sheets, activePos.sheet]);
 
   useEffect(() => {
     setPos((current) => (current.page % perView === 0 ? current : { ...current, page: current.page - (current.page % perView) }));
@@ -2067,7 +2069,7 @@ export function Notebook(props: {
       .finally(() => setClosed(false));
   }, [face, setClosed, loadAll]);
 
-  const sheet = sheets[pos.sheet];
+  const sheet = sheets[activePos.sheet];
 
   /**
    * Pasa de página y avisa si pasó algo (si no había a dónde ir, no). Antes de la primera
@@ -2624,10 +2626,10 @@ export function Notebook(props: {
   const total = props.total !== undefined ? props.total + extra : done ? sheets.length : undefined;
   const counter = sheet
     ? total !== undefined
-      ? t('Hoja {n} de {total}', { n: count(pos.sheet + 1), total: count(Math.max(total, pos.sheet + 1)) })
-      : t('Hoja {n}', { n: count(pos.sheet + 1) })
+      ? t('Hoja {n} de {total}', { n: count(activePos.sheet + 1), total: count(Math.max(total, activePos.sheet + 1)) })
+      : t('Hoja {n}', { n: count(activePos.sheet + 1) })
     : '';
-  const mounted = sheets.filter((item, index) => index === pos.sheet || retained.includes(item.id));
+  const mounted = sheets.filter((item, index) => index === activePos.sheet || retained.includes(item.id));
   const closeBook = useCallback(() => closeTo('front'), [closeTo]);
   const coverMenu = [...props.menuBefore, ...props.menuAfter];
   const navItems: MenuItem[] = [
@@ -2691,7 +2693,7 @@ export function Notebook(props: {
                   active={item.id === sheet.id}
                   categories={props.categories}
                   geometry={geometry}
-                  page={item.id === sheet.id ? pos.page : 0}
+                  page={item.id === sheet.id ? activePos.page : 0}
                   pageCount={pageCount}
                   turn={turn}
                   fading={fading}
