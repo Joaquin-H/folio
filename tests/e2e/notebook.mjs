@@ -820,6 +820,163 @@ test('si el archivo cambió afuera, quedarse con el de afuera no pierde lo escri
   equal(state.text, 'Texto de afuera', 'el original tenía que quedar con lo de afuera');
 });
 
+test('regresión (a): si el archivo cambia afuera mientras se edita, no se pisa lo escrito en el editor', async (page) => {
+  await open(page, 'standard', 'double');
+  await gotoSheet(page, WRITABLE);
+  await page.key('Enter');
+  await page.until(async () => (await page.state()).writing, 'no entró a escribir');
+  await page.type(' NO_ME_PISES');
+  const mine = (await page.state()).text;
+  check(mine.includes('NO_ME_PISES'), 'el texto tipeado no se encuentra en el editor');
+
+  // El archivo cambia externamente
+  await changeOutside(page, WRITABLE_ID, 'Texto externo mientras escribo');
+  await page.key('s', { ctrl: true });
+  await page.until(async () => ((await page.state()).mode ?? '').includes('cambió'), 'no apareció el aviso de conflicto');
+  check((await page.state()).writing, 'con el aviso a la vista todavía se está escribiendo');
+
+  // El editor no debe haber sido pisado por el texto externo
+  const currentInEditor = await page.evaluate("document.querySelector('.page-text.editing')?.textContent ?? ''");
+  check(currentInEditor.includes('NO_ME_PISES'), `el editor fue pisado por el cambio externo: ${currentInEditor}`);
+  check(!currentInEditor.includes('Texto externo'), `el editor mostró el cambio externo pisando lo tipeado: ${currentInEditor}`);
+
+  // Elegir "Guardar lo mío" fuerza el guardado con lo propio y despeja el conflicto
+  await page.clickOn('.page-mode.conflict button', 'mío');
+  await page.until(async () => !(await page.state()).mode?.includes('cambió'), 'no despejó el aviso de conflicto');
+
+  // Terminar de escribir
+  await page.key('Enter', { ctrl: true });
+  await page.until(async () => !(await page.state()).writing, 'Ctrl+Enter no terminó la escritura');
+  await page.settle(500);
+
+  const finalState = await page.state();
+  check(finalState.text.includes('NO_ME_PISES'), `el archivo no quedó con lo escrito por el usuario: ${finalState.text}`);
+});
+
+test('regresión (b): Ctrl + S guarda sin perder foco ni posición del cursor en medio del texto', async (page) => {
+  await open(page, 'standard', 'double');
+  await gotoSheet(page, WRITABLE);
+  await page.key('Enter');
+  await page.until(async () => (await page.state()).writing, 'no entró a escribir');
+
+  // Escribimos texto y colocamos el cursor en una posición conocida
+  await page.type('TextoDePruebaParaCursor');
+  await page.settle(200);
+
+  // Posicionamos el cursor a 6 caracteres del final
+  for (let i = 0; i < 6; i++) {
+    await page.key('ArrowLeft');
+  }
+  await sleep(100);
+
+  const offsetBefore = await page.evaluate(`(() => {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    const ed = document.querySelector('.page-text.editing');
+    if (!ed || !ed.contains(range.startContainer)) return null;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(ed);
+    pre.setEnd(range.startContainer, range.startOffset);
+    return pre.toString().length;
+  })()`);
+  check(offsetBefore !== null, 'no se pudo leer el cursor antes de Ctrl+S');
+  check((await page.state()).focusInEditor, 'el editor no tiene foco antes de Ctrl+S');
+
+  // Ctrl + S guarda
+  await page.key('s', { ctrl: true });
+  await page.until(async () => (await page.state()).focusInEditor, 'el editor perdió el foco tras Ctrl+S');
+
+  const offsetAfter = await page.evaluate(`(() => {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    const ed = document.querySelector('.page-text.editing');
+    if (!ed || !ed.contains(range.startContainer)) return null;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(ed);
+    pre.setEnd(range.startContainer, range.startOffset);
+    return pre.toString().length;
+  })()`);
+  equal(offsetAfter, offsetBefore, 'el cursor se movió tras Ctrl+S');
+
+  await page.key('Escape');
+});
+
+test('regresión recorte-durante-edición: recorte recibido mientras se edita se agrega al final sin perder lo tipeado ni el cursor', async (page) => {
+  await open(page, 'standard', 'double');
+  // Asegurar que existe hoja de Recortes
+  await page.evaluate(`import('/src/mock.ts').then(({ mockApi }) => mockApi.ensureClippingsCategory().then((catId) => mockApi.createNote('Recortes', 'Contenido inicial de recortes', catId)))`);
+  await page.settle(400);
+
+  const state = await gotoSheet(page, 'Recortes.txt');
+  equal(state.title, 'Recortes.txt', 'no navegó a la hoja Recortes');
+
+  // Entrar a escribir
+  await page.key('Enter');
+  await page.until(async () => (await page.state()).writing, 'no entró a escribir en Recortes');
+  await page.type('TextoMioEnRecortes');
+  await page.settle(200);
+
+  // Mover cursor hacia atrás
+  for (let i = 0; i < 5; i++) {
+    await page.key('ArrowLeft');
+  }
+  await sleep(100);
+
+  const offsetBefore = await page.evaluate(`(() => {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    const ed = document.querySelector('.page-text.editing');
+    if (!ed || !ed.contains(range.startContainer)) return null;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(ed);
+    pre.setEnd(range.startContainer, range.startOffset);
+    return pre.toString().length;
+  })()`);
+  check(offsetBefore !== null, 'no se pudo obtener el cursor antes del recorte');
+
+  // Simular recorte recibido en background
+  await page.evaluate(`import('/src/mock.ts').then(({ simulateSend }) => simulateSend({ origin: '— 16:00 · Web', text: 'RecorteLlegadoDuranteEdicion' }))`);
+
+  // Esperar a que el nuevo recorte se incorpore
+  await page.until(
+    async () => (await page.evaluate("document.querySelector('.page-text.editing')?.textContent ?? ''")).includes('RecorteLlegadoDuranteEdicion'),
+    'el recorte en background no se incorporó al editor',
+  );
+
+  const contentInEditor = await page.evaluate("document.querySelector('.page-text.editing')?.textContent ?? ''");
+  check(contentInEditor.includes('TextoMioEnRecortes'), 'el texto que el usuario estaba escribiendo se perdió al llegar el recorte');
+  check(contentInEditor.includes('RecorteLlegadoDuranteEdicion'), 'el recorte no está en el editor');
+
+  // Foco y cursor deben conservarse
+  const isFocusedAfter = await page.evaluate("document.activeElement === document.querySelector('.page-text.editing')");
+  check(isFocusedAfter, 'el editor perdió el foco al llegar el recorte');
+
+  const offsetAfter = await page.evaluate(`(() => {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    const ed = document.querySelector('.page-text.editing');
+    if (!ed || !ed.contains(range.startContainer)) return null;
+    const pre = range.cloneRange();
+    pre.selectNodeContents(ed);
+    pre.setEnd(range.startContainer, range.startOffset);
+    return pre.toString().length;
+  })()`);
+  equal(offsetAfter, offsetBefore, 'el cursor cambió de posición al llegar el recorte');
+
+  // Salir de edición guardando
+  await page.key('Enter', { ctrl: true });
+  await page.until(async () => !(await page.state()).writing, 'no salió de escribir');
+  await page.settle(500);
+
+  const finalRecortes = await page.state();
+  check(finalRecortes.text.includes('TextoMioEnRecortes'), 'la hoja guardada no contiene lo tipeado');
+  check(finalRecortes.text.includes('RecorteLlegadoDuranteEdicion'), 'la hoja guardada no contiene el recorte');
+});
+
 // ---- hoja suelta ---------------------------------------------------------------------
 
 test('hoja suelta: Ctrl + Enter y Ctrl + S guardan, y descartar con texto pide un segundo clic', async (page) => {

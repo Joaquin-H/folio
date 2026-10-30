@@ -69,10 +69,12 @@ import {
   caretAnchor,
   caretFromPoint,
   DRAFT,
+  getEditorCaret,
   offsetNear,
   placeCaret,
   placeCaretNear,
   readEditor,
+  setEditorCaret,
   toEditor,
   useWriter,
   type Writer,
@@ -712,15 +714,58 @@ function OpenSheet(props: {
 
   useEffect(() => {
     if (!detail || detail.id !== sheet.id) return;
-    syncExternal(sheet.id, detail.content, detail.hash ?? undefined);
-    if (isWriting && editor.current) {
-      const currentVal = readEditor(editor.current);
-      if (currentVal !== detail.content) {
-        editor.current.textContent = toEditor(detail.content);
-        placeCaret(editor.current, 'end');
-      }
+    if (!isWriting) {
+      syncExternal(sheet.id, detail.content, detail.hash ?? undefined);
     }
   }, [detail, sheet.id, isWriting, syncExternal]);
+
+  // Si llega un recorte a esta hoja mientras se está editando, se agrega al final sin perder
+  // lo que se escribió ni el cursor ni el foco.
+  useEffect(() => {
+    if (!isWriting) return;
+    const stopClip = api.onClippingSaved(async (payload) => {
+      if (!payload.sheetId || payload.sheetId !== sheet.id) return;
+      try {
+        const fresh = await api.getSheet(sheet.id);
+        const node = editor.current;
+        if (!node) return;
+        const currentVal = readEditor(node);
+        const saved = writer.getSavedText(sheet.id) ?? '';
+        let added = '';
+        if (saved && fresh.content.startsWith(saved)) {
+          added = fresh.content.slice(saved.length);
+        } else {
+          const linesFresh = fresh.content.split('\n');
+          const linesSaved = saved.split('\n');
+          if (linesFresh.length > linesSaved.length) {
+            added = '\n' + linesFresh.slice(linesSaved.length).join('\n');
+          } else {
+            added = '\n\n' + fresh.content;
+          }
+        }
+        if (!added.trim()) return;
+
+        const caret = getEditorCaret(node);
+        const hasFocus = document.activeElement === node;
+        const cleanAdded = added.replace(/^\n+/, '');
+        const updated = currentVal.trim()
+          ? `${currentVal.replace(/\n+$/, '')}\n\n${cleanAdded}`
+          : cleanAdded;
+
+        node.textContent = toEditor(updated);
+        writer.appendExternal(sheet.id, updated, fresh.content, fresh.hash ?? undefined);
+
+        if (caret !== null) {
+          setEditorCaret(node, caret);
+        } else if (hasFocus) {
+          node.focus({ preventScroll: true });
+        }
+      } catch (err) {
+        console.error('Error handling clipping during edit:', err);
+      }
+    });
+    return stopClip;
+  }, [isWriting, sheet.id, writer]);
 
   useLayoutEffect(() => {
     if (active) measure();
@@ -969,7 +1014,15 @@ function OpenSheet(props: {
     if (!action) return;
     event.preventDefault();
     if (action === 'finish') void writer.finish();
-    else if (action === 'save') void writer.flush();
+    else if (action === 'save') {
+      const node = editor.current;
+      const caret = node ? getEditorCaret(node) : null;
+      void writer.flush().then(() => {
+        if (node && caret !== null && isWriting) {
+          setEditorCaret(node, caret);
+        }
+      });
+    }
     else if (action === 'preview') {
       if (markdown) toggleLivePreview();
     } else if (action === 'indent') document.execCommand('insertText', false, '\t');

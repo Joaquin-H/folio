@@ -278,24 +278,73 @@ export function useWriter(events: WriterEvents) {
 
   const consumeRecent = useCallback(() => setRecent(null), []);
 
+  const getSavedText = useCallback((id: number): string | null => {
+    const s = session.current;
+    return s && s.id === id ? s.savedText : null;
+  }, []);
+
+  /**
+   * Incorpora un recorte recibido mientras se edita la hoja: actualiza la base guardada en disco
+   * y el texto de la sesión sin pisar lo que el usuario está escribiendo.
+   */
+  const appendExternal = useCallback((id: number, currentText: string, onDiskContent: string, hash?: string) => {
+    const s = session.current;
+    if (s && s.id === id) {
+      s.text = currentText;
+      s.savedText = onDiskContent;
+      if (hash) s.hash = hash;
+      setRecent((current) => (current && current.id === id ? { id, text: currentText, hash } : current));
+    }
+  }, []);
+
   /**
    * Sincroniza el contenido de la sesión cuando la hoja fue actualizada externamente (ej. recorte recibido en background).
+   * Solo sincroniza si NO se está escribiendo activamente esa hoja.
    */
   const syncExternal = useCallback((id: number, content: string, hash?: string) => {
     const s = session.current;
     if (s && s.id === id) {
-      s.text = content;
-      s.savedText = content;
-      if (hash) s.hash = hash;
-      setRecent((current) => (current && current.id === id ? { id, text: content, hash } : current));
+      return;
     } else {
       setRecent((current) => (current && current.id === id ? null : current));
     }
   }, []);
 
   return useMemo(
-    () => ({ writing, recent, begin, finish, touched, rename, flush, attach, text, resolve, setCategory, consumeRecent, syncExternal }),
-    [writing, recent, begin, finish, touched, rename, flush, attach, text, resolve, setCategory, consumeRecent, syncExternal],
+    () => ({
+      writing,
+      recent,
+      begin,
+      finish,
+      touched,
+      rename,
+      flush,
+      attach,
+      text,
+      resolve,
+      setCategory,
+      consumeRecent,
+      syncExternal,
+      getSavedText,
+      appendExternal,
+    }),
+    [
+      writing,
+      recent,
+      begin,
+      finish,
+      touched,
+      rename,
+      flush,
+      attach,
+      text,
+      resolve,
+      setCategory,
+      consumeRecent,
+      syncExternal,
+      getSavedText,
+      appendExternal,
+    ],
   );
 }
 
@@ -321,18 +370,133 @@ export function readEditor(node: HTMLElement): string {
   return text.endsWith('\n') ? text.slice(0, -1) : text;
 }
 
+/** Obtiene el desplazamiento del cursor respecto al texto de `readEditor`. */
+export function getEditorCaret(node: HTMLElement): number | null {
+  const selection = getSelection();
+  if (!selection || !selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!node.contains(range.startContainer)) return null;
+
+  let offset = 0;
+  let found = false;
+
+  const walk = (parent: Node): boolean => {
+    if (parent === range.startContainer) {
+      if (parent.nodeType === Node.TEXT_NODE) {
+        offset += range.startOffset;
+      }
+      found = true;
+      return true;
+    }
+
+    if (parent.nodeType === Node.TEXT_NODE) {
+      offset += (parent as Text).data.length;
+      return false;
+    }
+
+    if (parent.nodeName === 'BR') {
+      offset += 1;
+      return false;
+    }
+
+    const children = parent.childNodes;
+    for (let i = 0; i < children.length; i++) {
+      if (parent === range.startContainer && i === range.startOffset) {
+        found = true;
+        return true;
+      }
+      const child = children[i];
+      if (walk(child)) return true;
+    }
+    return false;
+  };
+
+  walk(node);
+  return found ? offset : null;
+}
+
+/** Restaura el cursor a la posición exacta en el editor. */
+export function setEditorCaret(node: HTMLElement, targetOffset: number) {
+  const selection = getSelection();
+  if (!selection) return;
+
+  let current = 0;
+  let targetNode: Node | null = null;
+  let targetNodeOffset = 0;
+
+  const walk = (parent: Node): boolean => {
+    if (parent.nodeType === Node.TEXT_NODE) {
+      const len = (parent as Text).data.length;
+      if (current + len >= targetOffset) {
+        targetNode = parent;
+        targetNodeOffset = targetOffset - current;
+        return true;
+      }
+      current += len;
+      return false;
+    }
+
+    for (let i = 0; i < parent.childNodes.length; i++) {
+      const child = parent.childNodes[i];
+      if (child.nodeName === 'BR') {
+        if (current + 1 > targetOffset) {
+          targetNode = parent;
+          targetNodeOffset = i;
+          return true;
+        }
+        current += 1;
+      } else if (child.nodeType === Node.TEXT_NODE) {
+        const len = (child as Text).data.length;
+        if (current + len >= targetOffset) {
+          targetNode = child;
+          targetNodeOffset = targetOffset - current;
+          return true;
+        }
+        current += len;
+      } else {
+        if (walk(child)) return true;
+      }
+    }
+    return false;
+  };
+
+  walk(node);
+
+  const range = document.createRange();
+  if (targetNode) {
+    try {
+      range.setStart(
+        targetNode,
+        Math.min(
+          targetNodeOffset,
+          targetNode.nodeType === Node.TEXT_NODE ? (targetNode as Text).length : targetNode.childNodes.length,
+        ),
+      );
+    } catch {
+      range.selectNodeContents(node);
+      range.collapse(false);
+    }
+  } else {
+    range.selectNodeContents(node);
+    range.collapse(false);
+  }
+  range.collapse(true);
+  node.focus({ preventScroll: true });
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 /** Pone el cursor en esa posición del texto (o al final) y le da el foco al editor. */
 export function placeCaret(node: HTMLElement, at: number | 'end') {
+  if (typeof at === 'number') {
+    setEditorCaret(node, at);
+    return;
+  }
   const selection = getSelection();
   if (!selection) return;
   const range = document.createRange();
-  const first = node.firstChild;
   const last = node.lastChild;
-  if (at !== 'end' && first?.nodeType === Node.TEXT_NODE) {
-    range.setStart(first, Math.min(at, (first as Text).length));
-  } else if (at !== 'end') {
-    range.setStart(node, 0);
-  } else if (last?.nodeType === Node.TEXT_NODE) {
+  if (last?.nodeType === Node.TEXT_NODE) {
     // Después del salto de línea de más no se escribe: el final es justo antes.
     const text = last as Text;
     range.setStart(text, text.data.endsWith('\n') ? text.length - 1 : text.length);
