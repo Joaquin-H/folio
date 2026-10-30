@@ -76,52 +76,8 @@ const VK_MENU: i32 = 0x12;
 const VK_LWIN: i32 = 0x5B;
 const VK_RWIN: i32 = 0x5C;
 
-/// Las teclas que tienen que estar sueltas antes de simular el Ctrl+C: la principal del
-/// atajo y los cuatro modificadores, sean o no parte de la combinación (un Mayús que se
-/// quedó apretado lo convertiría en Ctrl+Mayús+C, que en un navegador abre las herramientas
-/// de desarrollo).
-#[allow(dead_code)]
-pub fn keys_to_release(main: i32) -> Vec<i32> {
-    let mut keys = vec![VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN];
-    if main != 0 && !keys.contains(&main) {
-        keys.push(main);
-    }
-    keys
-}
-
 /// Lo que hay que hacer con el portapapeles original después de copiar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Restore {
-    /// Estaba vacío: se lo vuelve a vaciar.
-    Empty,
-    /// Era solo texto: se lo vuelve a dejar como estaba.
-    Text,
-    /// Tenía algo más que texto (una imagen, archivos, HTML, un formato de otro programa) o
-    /// no se pudo leer. Devolver solo el texto lo pisaría con algo incompleto, así que se
-    /// deja lo que se copió.
-    Keep,
-}
-
-const CF_TEXT: u32 = 1;
-const CF_OEMTEXT: u32 = 7;
 const CF_UNICODETEXT: u32 = 13;
-const CF_LOCALE: u32 = 16;
-
-/// Decide qué hacer con el portapapeles original según los formatos que tenía. Cuando
-/// alguien copia texto, Windows ofrece solo texto en sus tres variantes (CF_TEXT,
-/// CF_OEMTEXT y CF_UNICODETEXT, que arma él a partir de una) y el idioma (CF_LOCALE): eso se
-/// puede devolver entero con un único texto Unicode. Cualquier otro formato, no.
-pub fn plan(formats: &[u32]) -> Restore {
-    if formats.is_empty() {
-        return Restore::Empty;
-    }
-    let only_text = formats.iter().all(|format| matches!(*format, CF_TEXT | CF_OEMTEXT | CF_UNICODETEXT | CF_LOCALE));
-    if only_text && formats.contains(&CF_UNICODETEXT) {
-        Restore::Text
-    } else {
-        Restore::Keep
-    }
-}
 
 /// Qué combinación usar para copiar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,7 +298,7 @@ mod imp {
 
     #[allow(unused_imports)]
     use super::{
-        plan, wait_until, Chord, Clip, Clock, Fail, Restore, Window, COPY_LIMIT, COPY_STEP, CF_UNICODETEXT, RELEASE_LIMIT,
+        wait_until, Chord, Clip, Clock, Fail, Window, COPY_LIMIT, COPY_STEP, CF_UNICODETEXT, RELEASE_LIMIT,
         RELEASE_STEP,
     };
 
@@ -359,41 +315,18 @@ mod imp {
         fn MapVirtualKeyW(code: u32, kind: u32) -> u32;
         fn OpenClipboard(owner: Hwnd) -> i32;
         fn CloseClipboard() -> i32;
-        fn EmptyClipboard() -> i32;
-        fn EnumClipboardFormats(format: u32) -> u32;
         fn GetClipboardData(format: u32) -> isize;
-        fn SetClipboardData(format: u32, memory: isize) -> isize;
         fn GetClipboardSequenceNumber() -> u32;
-        #[allow(clippy::too_many_arguments)]
-        fn CreateWindowExW(
-            ex_style: u32,
-            class_name: *const u16,
-            window_name: *const u16,
-            style: u32,
-            x: i32,
-            y: i32,
-            width: i32,
-            height: i32,
-            parent: Hwnd,
-            menu: isize,
-            instance: isize,
-            param: *mut c_void,
-        ) -> Hwnd;
-        #[allow(dead_code)]
-        fn DestroyWindow(hwnd: Hwnd) -> i32;
     }
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn GlobalAlloc(flags: u32, bytes: usize) -> isize;
         fn GlobalLock(memory: isize) -> *mut c_void;
         fn GlobalUnlock(memory: isize) -> i32;
         fn GlobalSize(memory: isize) -> usize;
-        fn GlobalFree(memory: isize) -> isize;
         fn OpenProcess(access: u32, inherit: i32, process: u32) -> isize;
         fn QueryFullProcessImageNameW(process: isize, flags: u32, name: *mut u16, size: *mut u32) -> i32;
         fn CloseHandle(handle: isize) -> i32;
-        fn GetModuleHandleW(name: *const u16) -> isize;
     }
 
     /// `KEYBDINPUT` en 64 bits: wVk, wScan, dwFlags, time y dwExtraInfo (24 bytes).
@@ -446,9 +379,6 @@ mod imp {
     const VK_H: u16 = 0x48;
     const MAPVK_VK_TO_VSC: u32 = 0;
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
-    const GMEM_MOVEABLE: u32 = 0x0002;
-    /// Ventana sin nada para ver, que solo sirve de dueña del portapapeles: `HWND_MESSAGE`.
-    const HWND_MESSAGE: Hwnd = -3;
     /// Cuánto se insiste, como mucho, para abrir el portapapeles (otro programa puede tenerlo abierto).
     const OPEN_LIMIT: std::time::Duration = std::time::Duration::from_millis(250);
     const OPEN_STEP: std::time::Duration = std::time::Duration::from_millis(10);
@@ -457,10 +387,6 @@ mod imp {
     const SETTLE_STEP: std::time::Duration = std::time::Duration::from_millis(25);
     #[allow(dead_code)]
     const SETTLE_TRIES: u32 = 6;
-
-    fn wide(text: &str) -> Vec<u16> {
-        text.encode_utf16().chain(std::iter::once(0)).collect()
-    }
 
     fn key_event(vk: u16, up: bool, extended: bool) -> Input {
         // SAFETY: consulta pura de una tabla del sistema.
@@ -575,21 +501,6 @@ mod imp {
             wait_until(clock, OPEN_LIMIT, OPEN_STEP, || unsafe { OpenClipboard(owner) } != 0).then_some(Self)
         }
 
-        /// Los formatos que ofrece ahora, en el orden del portapapeles.
-        fn formats(&self) -> Vec<u32> {
-            let mut formats = Vec::new();
-            let mut format = 0;
-            loop {
-                // SAFETY: el portapapeles está abierto por este hilo (`Open` existe).
-                format = unsafe { EnumClipboardFormats(format) };
-                // 0 es el final de la lista (o un error); el tope evita un bucle sin fin.
-                if format == 0 || formats.len() >= 1024 {
-                    return formats;
-                }
-                formats.push(format);
-            }
-        }
-
         /// El texto Unicode, si lo hay. El portapapeles es el dueño de esa memoria: se la
         /// bloquea para leerla y se la suelta, pero no se libera.
         fn text(&self) -> Option<String> {
@@ -613,128 +524,12 @@ mod imp {
                 Some(text)
             }
         }
-
-        fn clear(&self) -> bool {
-            // SAFETY: el portapapeles está abierto por este hilo.
-            unsafe { EmptyClipboard() != 0 }
-        }
-
-        /// Deja ese texto, y solo ese, en el portapapeles. Hace falta que se haya abierto con
-        /// una ventana dueña (`Owner`): con 0, `SetClipboardData` falla después de vaciar.
-        fn put_text(&self, text: &str) -> bool {
-            let units = wide(text);
-            let bytes = units.len() * 2;
-            // SAFETY: la memoria se pide movible, se bloquea para escribirla y se desbloquea. Si
-            // `SetClipboardData` la acepta, pasa a ser del sistema y no se toca más; si no, se
-            // libera acá.
-            unsafe {
-                let memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
-                if memory == 0 {
-                    return false;
-                }
-                let pointer = GlobalLock(memory) as *mut u16;
-                if pointer.is_null() {
-                    GlobalFree(memory);
-                    return false;
-                }
-                std::ptr::copy_nonoverlapping(units.as_ptr(), pointer, units.len());
-                GlobalUnlock(memory);
-                if EmptyClipboard() == 0 || SetClipboardData(CF_UNICODETEXT, memory) == 0 {
-                    GlobalFree(memory);
-                    return false;
-                }
-                true
-            }
-        }
     }
 
     impl Drop for Open {
         fn drop(&mut self) {
             // SAFETY: este hilo abrió el portapapeles.
             unsafe { CloseClipboard() };
-        }
-    }
-
-    /// Una ventana invisible que hace de dueña del portapapeles mientras se lo restaura.
-    #[allow(dead_code)]
-    struct Owner(Hwnd);
-
-    #[allow(dead_code)]
-    impl Owner {
-        fn create() -> Option<Self> {
-            let class = wide("STATIC");
-            // SAFETY: crea una ventana de mensajes con una clase que ya existe en el sistema.
-            let hwnd = unsafe {
-                CreateWindowExW(
-                    0,
-                    class.as_ptr(),
-                    std::ptr::null(),
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    HWND_MESSAGE,
-                    0,
-                    GetModuleHandleW(std::ptr::null()),
-                    std::ptr::null_mut(),
-                )
-            };
-            (hwnd != 0).then_some(Self(hwnd))
-        }
-    }
-
-    impl Drop for Owner {
-        fn drop(&mut self) {
-            // SAFETY: la ventana es de este hilo, que es quien la destruye.
-            unsafe { DestroyWindow(self.0) };
-        }
-    }
-
-    /// Lo que había en el portapapeles antes de copiar.
-    #[allow(dead_code)]
-    struct Before {
-        plan: Restore,
-        text: Option<String>,
-    }
-
-    #[allow(dead_code)]
-    impl Before {
-        fn take(clock: &impl Clock) -> Self {
-            let (plan_now, text) = match Open::acquire(0, clock) {
-                Some(clipboard) => {
-                    let plan_now = plan(&clipboard.formats());
-                    let text = if plan_now == Restore::Text { clipboard.text() } else { None };
-                    // Era texto pero no se pudo leer: no hay nada que devolver.
-                    let plan_now = if plan_now == Restore::Text && text.is_none() { Restore::Keep } else { plan_now };
-                    (plan_now, text)
-                }
-                None => (Restore::Keep, None),
-            };
-            Self { plan: plan_now, text }
-        }
-
-        /// Deja el portapapeles como estaba, si se puede y si nadie lo tocó mientras tanto.
-        /// `copied` es el número de secuencia que dejó la copia.
-        fn put_back(&self, copied: u32, clock: &impl Clock) {
-            if sequence() != copied {
-                return;
-            }
-            match (self.plan, &self.text) {
-                (Restore::Keep, _) | (Restore::Text, None) => {}
-                (Restore::Empty, _) => {
-                    let owner = Owner::create();
-                    if let Some(clipboard) = Open::acquire(owner.as_ref().map_or(0, |owner| owner.0), clock) {
-                        clipboard.clear();
-                    }
-                }
-                (Restore::Text, Some(text)) => {
-                    let owner = Owner::create();
-                    if let Some(clipboard) = Open::acquire(owner.as_ref().map_or(0, |owner| owner.0), clock) {
-                        clipboard.put_text(text);
-                    }
-                }
-            }
         }
     }
 
@@ -1024,39 +819,6 @@ mod tests {
         assert!(!wait_until(&clock, COPY_LIMIT, COPY_STEP, || false));
         assert_eq!(clock.now(), Duration::from_millis(705));
         assert!(clock.now() >= COPY_LIMIT && clock.now() < COPY_LIMIT + COPY_STEP);
-    }
-
-    #[test]
-    fn hay_que_esperar_a_los_cuatro_modificadores_y_a_la_tecla_del_atajo() {
-        let keys = keys_to_release(0x58); // la X de Ctrl+Alt+X
-        for modifier in [0x10, 0x11, 0x12, 0x5B, 0x5C] {
-            assert!(keys.contains(&modifier), "{modifier:#x}");
-        }
-        assert!(keys.contains(&0x58));
-        assert_eq!(keys.len(), 6);
-        // Si la tecla principal fuera uno de los modificadores o no se supiera, no se repite ni se agrega un 0.
-        assert_eq!(keys_to_release(0x11).len(), 5);
-        assert_eq!(keys_to_release(0).len(), 5);
-    }
-
-    #[test]
-    fn el_portapapeles_se_devuelve_solo_si_era_texto_o_estaba_vacio() {
-        // Vacío: se vuelve a vaciar.
-        assert_eq!(plan(&[]), Restore::Empty);
-        // Texto que copió cualquier programa: las tres variantes que arma Windows y el idioma.
-        assert_eq!(plan(&[CF_UNICODETEXT]), Restore::Text);
-        assert_eq!(plan(&[CF_TEXT, CF_OEMTEXT, CF_UNICODETEXT, CF_LOCALE]), Restore::Text);
-        assert_eq!(plan(&[CF_LOCALE, CF_UNICODETEXT]), Restore::Text);
-        // Una imagen (CF_BITMAP, CF_DIB, CF_DIBV5), archivos (CF_HDROP) o un metarchivo.
-        for other in [2u32, 8, 17, 15, 14, 3] {
-            assert_eq!(plan(&[other]), Restore::Keep, "{other}");
-            assert_eq!(plan(&[CF_UNICODETEXT, other]), Restore::Keep, "texto + {other}");
-        }
-        // Texto con formato (HTML, RTF) o con marcas de otros programas: formatos registrados (desde 0xC000).
-        assert_eq!(plan(&[CF_UNICODETEXT, 0xC0A5]), Restore::Keep);
-        assert_eq!(plan(&[CF_TEXT, CF_UNICODETEXT, 0xC13B, 0xC13C]), Restore::Keep);
-        // Sin texto Unicode no hay con qué devolverlo.
-        assert_eq!(plan(&[CF_LOCALE]), Restore::Keep);
     }
 
     fn window(title: &str, class: &str, image: &str) -> Window {

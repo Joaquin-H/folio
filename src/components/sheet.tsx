@@ -53,40 +53,52 @@ export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true, 
   const [detail, setDetail] = useState<SheetDetail | null>(null);
   const id = sheet?.id;
   const stamp = sheet ? `${sheet.modifiedAt}:${sheet.versionCount}` : '';
-  useEffect(() => {
-    if (id === undefined || !enabled) return;
-    let alive = true;
-    api
-      .getSheet(id)
-      .then((result) => alive && setDetail(result))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [id, stamp, enabled, revision]);
 
   useEffect(() => {
     if (id === undefined || !enabled) return;
     let alive = true;
-    const fetchFresh = () => {
+    let coalescingTimer: number | null = null;
+    let inFlight: Promise<SheetDetail> | null = null;
+
+    const requestFetch = () => {
       if (!alive) return;
-      api
-        .getSheet(id)
-        .then((result) => alive && setDetail(result))
-        .catch(() => {});
+      if (coalescingTimer !== null) return;
+      coalescingTimer = window.setTimeout(() => {
+        coalescingTimer = null;
+        if (!alive) return;
+        if (inFlight) return;
+        inFlight = api
+          .getSheet(id)
+          .then((result) => {
+            if (alive) setDetail(result);
+            return result;
+          })
+          .catch(() => ({} as SheetDetail))
+          .finally(() => {
+            inFlight = null;
+          });
+      }, 16);
     };
+
+    api
+      .getSheet(id)
+      .then((result) => alive && setDetail(result))
+      .catch(() => {});
+
     const stopClip = api.onClippingSaved((payload) => {
       if (!payload.sheetId || payload.sheetId === id) {
-        fetchFresh();
+        requestFetch();
       }
     });
-    const stopChanged = api.onChanged(fetchFresh);
+    const stopChanged = api.onChanged(requestFetch);
+
     return () => {
       alive = false;
+      if (coalescingTimer !== null) window.clearTimeout(coalescingTimer);
       stopClip();
       stopChanged();
     };
-  }, [id, enabled]);
+  }, [id, stamp, enabled, revision]);
 
   return detail && detail.id === id ? detail : null;
 }
