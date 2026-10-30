@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { BookOpen, Lock, Power, Settings2, Trash2 } from 'lucide-react';
+import { BookOpen, CalendarCheck, Lock, Pin, Power, Scissors, Settings2, Trash2 } from 'lucide-react';
 import { api, isTauri, type Spot } from './api';
 import { Finder } from './components/Finder';
 import { Notebook, type FilterChip, type NotebookActions, type NotebookTab } from './components/Notebook';
 import { SettingsSheet } from './components/Settings';
 import { Tutorial } from './components/Tutorial';
 import { Presence, type MenuItem } from './components/ui';
-import { dayHeading, plural, readableOn } from './format';
+import { dayHeading, dayKey, plural, readableOn } from './format';
 import { useDebounced, usePrefs } from './hooks';
 import { mark, useT } from './i18n';
 import {
@@ -30,6 +30,8 @@ const isMac = /Mac/i.test(navigator.userAgent);
 
 const EMPTY: Record<View['kind'], { title: string; hint: string }> = {
   all: { title: mark('Todavía no hay hojas'), hint: mark('Escribí en el Bloc de notas o guardá un .txt o .md: va a aparecer acá solo.') },
+  today: { title: mark('Sin hojas hoy'), hint: mark('Las hojas que crees o edites hoy aparecen acá.') },
+  pinned: { title: mark('Sin hojas fijas'), hint: mark('Fijá cualquier hoja desde su encabezado para tenerla siempre a mano acá.') },
   uncategorized: { title: mark('Todo tiene categoría'), hint: mark('Las hojas sin categoría aparecen acá.') },
   secret: { title: mark('El secret-book está vacío'), hint: mark('Las hojas marcadas como sensibles se guardan acá, fuera del cuaderno y de la búsqueda.') },
   hidden: { title: mark('La papelera está vacía'), hint: mark('Lo que mandes a la papelera deja el cuaderno, pero podés recuperarlo desde acá.') },
@@ -38,6 +40,8 @@ const EMPTY: Record<View['kind'], { title: string; hint: string }> = {
 
 const VIEW_LABEL: Record<Exclude<View['kind'], 'category'>, string> = {
   all: mark('Todas las hojas'),
+  today: mark('Hoy'),
+  pinned: mark('Fijas'),
   uncategorized: mark('Sin categoría'),
   secret: mark('Secret-book'),
   hidden: mark('Papelera'),
@@ -98,6 +102,31 @@ export function App() {
   /** El próximo ajuste de la ventana no la centra (viene de estirarla a mano). */
   const keepPlace = useRef(false);
 
+  const [clippingToast, setClippingToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const stop = api.onClippingSaved((payload) => {
+      if (!alive) return;
+      api
+        .getOverview()
+        .then((next) => alive && setOverview(next))
+        .catch(() => {});
+      setRevision((value) => value + 1);
+      if (payload.message) {
+        setClippingToast(payload.message);
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setClippingToast(null), 3500);
+      }
+    });
+    return () => {
+      alive = false;
+      stop();
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, []);
+
   useEffect(() => {
     let alive = true;
     const refresh = () =>
@@ -113,6 +142,31 @@ export function App() {
     return () => {
       alive = false;
       stop();
+    };
+  }, []);
+
+  // Cambio de día automático: si cambia la fecha actual (por ejemplo a medianoche o al reanudar la PC),
+  // se refrescan el resumen y el listado de hojas para que «Hoy» refleje el nuevo día.
+  useEffect(() => {
+    let currentDay = dayKey(Date.now());
+    const checkDay = () => {
+      const nowDay = dayKey(Date.now());
+      if (nowDay !== currentDay) {
+        currentDay = nowDay;
+        api
+          .getOverview()
+          .then((next) => setOverview(next))
+          .catch(() => {});
+        setRevision((value) => value + 1);
+      }
+    };
+    const timer = window.setInterval(checkDay, 30_000);
+    window.addEventListener('focus', checkDay);
+    document.addEventListener('visibilitychange', checkDay);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', checkDay);
+      document.removeEventListener('visibilitychange', checkDay);
     };
   }, []);
 
@@ -139,7 +193,6 @@ export function App() {
         event.key === 'F7'
       ) {
         event.preventDefault();
-        event.stopPropagation();
       }
     };
     window.addEventListener('keydown', preventBrowserShortcuts, { capture: true });
@@ -162,14 +215,17 @@ export function App() {
   }, []);
 
   // El tamaño de la ventana sale del cuaderno: tamaño elegido, una o dos hojas, abierto o cerrado.
-  const shape = useMemo<Shape>(() => ({ spread: prefs.spread, closed, tabs: prefs.tabs }), [prefs.spread, closed, prefs.tabs]);
+  const shape = useMemo<Shape>(
+    () => ({ spread: prefs.spread, closed, tabs: prefs.tabs, frame: prefs.frame }),
+    [prefs.spread, closed, prefs.tabs, prefs.frame],
+  );
   const book = useMemo(() => bookBox(prefs.size, prefs.height, shape), [prefs.size, prefs.height, shape]);
   const sizingNow = sizing !== null;
   const [resizing, setResizing] = useState(false);
   useEffect(() => {
     // En modo tamaño la ventana no se toca: el cambio se aplica al soltar, de una sola vez.
     if (!isTauri || sizingNow) return;
-    const box = windowBox(book, prefs.tabs);
+    const box = windowBox(book, prefs.tabs, prefs.frame);
     const center = prefs.size === 'full' && !keepPlace.current;
     keepPlace.current = false;
     const fits = () => Math.abs(window.innerWidth - box.width) <= 1 && Math.abs(window.innerHeight - box.height) <= 1;
@@ -209,7 +265,7 @@ export function App() {
       window.clearTimeout(timer);
       window.removeEventListener('resize', recheck);
     };
-  }, [book, prefs.tabs, prefs.size, sizingNow]);
+  }, [book, prefs.tabs, prefs.frame, prefs.size, sizingNow]);
 
   // ---- modo tamaño ---------------------------------------------------------
   //
@@ -231,7 +287,7 @@ export function App() {
   }, []);
 
   const spotFor = useCallback((state: Sizing, like: Shape): Spot => {
-    const box = windowBox(boxForHeight(state.height, like), like.tabs);
+    const box = windowBox(boxForHeight(state.height, like), like.tabs, like.frame);
     return { dx: state.dx, dy: state.dy, width: box.width, height: box.height };
   }, []);
 
@@ -245,8 +301,10 @@ export function App() {
       const target = job.wanted;
       job.wanted = undefined;
       if (target === undefined) return;
-      const tabs = now.current.shape.tabs;
-      await api.window.ghost(target, [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom]).catch(() => {});
+      const { tabs, frame } = now.current.shape;
+      const margins: [number, number, number, number] =
+        frame === 'none' ? [0, tabs ? 22 : 0, 0, 0] : [DESK.side, tabs ? DESK.top : DESK.topWithoutTabs, DESK.side, DESK.bottom];
+      await api.window.ghost(target, margins).catch(() => {});
     });
   }, []);
 
@@ -345,7 +403,7 @@ export function App() {
       const pullX = grip.includes('e') ? 1 : grip.includes('w') ? -1 : 0;
       const pullY = grip.includes('s') ? 1 : grip.includes('n') ? -1 : 0;
       const origin = { x: event.screenX, y: event.screenY };
-      const before = windowBox(boxForHeight(base.height, like), like.tabs);
+      const before = windowBox(boxForHeight(base.height, like), like.tabs, like.frame);
       // El cartel se pone al día como mucho unas cuarenta veces por segundo.
       let refresh = 0;
 
@@ -355,7 +413,7 @@ export function App() {
         // En una esquina manda el eje que más se movió.
         const change = pullX && pullY ? (Math.abs(byWidth) > Math.abs(byHeight) ? byWidth : byHeight) : pullX ? byWidth : byHeight;
         const height = snapHeight(base.height + change, like);
-        const after = windowBox(boxForHeight(height, like), like.tabs);
+        const after = windowBox(boxForHeight(height, like), like.tabs, like.frame);
         // El lado opuesto al que se arrastra no se mueve.
         const next: Sizing = {
           dx: base.dx + (pullX < 0 ? before.width - after.width : 0),
@@ -436,24 +494,48 @@ export function App() {
   const total = view.kind === 'category' ? category?.count : overview ? overview.counts[view.kind] : undefined;
   const viewLabel = view.kind === 'category' ? (category?.name ?? t('Categoría')) : t(VIEW_LABEL[view.kind]);
 
-  const tabs = useMemo<NotebookTab[] | null>(() => {
-    if (!prefs.tabs) return null;
+  const allTabs = useMemo<NotebookTab[]>(() => {
     const counts = overview?.counts;
+    const categories = overview?.categories ?? [];
+    const clippingsId =
+      overview?.clippingsCategoryId ??
+      categories.find((c) => ['recortes', 'clippings'].includes(c.name.toLowerCase()))?.id ??
+      null;
+    const clippingsCat = clippingsId !== null ? categories.find((c) => c.id === clippingsId) : undefined;
+    const commonCategories = categories.filter((c) => c.id !== clippingsId);
     return [
       { key: 'all', view: { kind: 'all' }, label: t('Todas'), count: counts?.all ?? 0, color: 'var(--paper)', ink: 'var(--label)' },
-      ...(overview?.categories ?? []).map<NotebookTab>((c) => ({
+      ...commonCategories.map<NotebookTab>((c) => ({
         key: `category-${c.id}`,
         view: { kind: 'category', id: c.id },
         label: c.name,
         count: c.count,
         color: c.color,
         ink: readableOn(c.color),
+        colorOnly: true,
       })),
-      { key: 'uncategorized', view: { kind: 'uncategorized' }, label: t('Sin categoría'), count: counts?.uncategorized ?? 0, color: '#8E8E93', ink: '#fff' },
+      { key: 'today', view: { kind: 'today' }, label: t('Hoy'), count: counts?.today ?? 0, color: '#4e4b47', ink: '#fff', icon: <CalendarCheck size={13} />, atEnd: true },
+      { key: 'pinned', view: { kind: 'pinned' }, label: t('Fijas'), count: counts?.pinned ?? 0, color: '#494d58', ink: '#fff', icon: <Pin size={13} />, atEnd: true },
+      ...(clippingsCat
+        ? [
+            {
+              key: 'clippings',
+              view: { kind: 'category' as const, id: clippingsCat.id },
+              label: t('Recortes'),
+              count: clippingsCat.count,
+              color: clippingsCat.color,
+              ink: readableOn(clippingsCat.color),
+              icon: <Scissors size={13} />,
+              atEnd: true,
+            },
+          ]
+        : []),
       { key: 'secret', view: { kind: 'secret' }, label: t('Secret-book'), count: counts?.secret ?? 0, color: '#3A3A3C', ink: '#fff', icon: <Lock size={13} />, atEnd: true },
-      { key: 'hidden', view: { kind: 'hidden' }, label: t('Papelera'), count: counts?.hidden ?? 0, color: '#AEAEB2', ink: '#1d1d1f', icon: <Trash2 size={13} />, atEnd: true },
+      { key: 'hidden', view: { kind: 'hidden' }, label: t('Papelera'), count: counts?.hidden ?? 0, color: '#707074', ink: '#fff', icon: <Trash2 size={13} />, atEnd: true },
     ];
-  }, [prefs.tabs, overview, t]);
+  }, [overview, t]);
+
+  const tabs = prefs.tabs ? allTabs : null;
 
   // Lo que el cuaderno muestra de los filtros: qué está filtrando y cómo quitarlo.
   // La categoría ya se ve en la solapa activa; solo hace falta si las solapas están ocultas.
@@ -500,7 +582,10 @@ export function App() {
   const sizingChanged = sizing !== null && (sizing.dx !== 0 || sizing.dy !== 0 || sizing.height !== book.height);
 
   return (
-    <div className={`app${isMac ? ' mac' : ''}${resizing ? ' resizing' : ''}${sizing ? ' sizing' : ''}`}>
+    <div
+      className={`app${isMac ? ' mac' : ''}${resizing ? ' resizing' : ''}${sizing ? ' sizing' : ''}${prefs.frame !== 'solid' ? ' borderless' : ''}${prefs.frame === 'none' ? ' immersive' : ''}`}
+      data-tauri-drag-region
+    >
       <Notebook
         filter={filter}
         revision={revision}
@@ -528,12 +613,16 @@ export function App() {
         menuAfter={menuAfter}
         chips={chips}
         tabs={tabs}
+        allTabs={allTabs}
+        hideTabs={!prefs.tabs}
         view={view}
         onView={setView}
         actions={actions}
         compose={compose}
         notesDir={overview?.notesDir ?? ''}
         markdown={prefs.markdown}
+        hideHeader={prefs.hideHeader}
+        centerTitle={prefs.centerTitle}
         onStretch={startStretch}
         flush={flush}
       />
@@ -585,6 +674,14 @@ export function App() {
       </Presence>
 
       <Tutorial replay={tour} onOpenSettings={openSettings} />
+
+      <Presence show={clippingToast !== null}>
+        {(leaving) => (
+          <div className={`toast${leaving ? ' leaving' : ''}`} role="status">
+            {clippingToast}
+          </div>
+        )}
+      </Presence>
     </div>
   );
 }

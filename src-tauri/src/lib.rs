@@ -7,6 +7,7 @@ mod ghost;
 mod integrations;
 mod jev;
 mod llm;
+pub mod mcp;
 mod model;
 mod notepad;
 mod provider;
@@ -322,6 +323,9 @@ pub fn open_main_window(app: &AppHandle) {
         .min_inner_size(390.0, 480.0)
         .resizable(false)
         .maximizable(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
         // Sin esto, en Windows el manejador nativo de arrastrar y soltar se queda con los
         // archivos y el evento `drop` de la página nunca llega (soltar una imagen sobre la tapa).
         .disable_drag_drop_handler();
@@ -337,10 +341,12 @@ pub fn open_main_window(app: &AppHandle) {
     };
     #[cfg(target_os = "macos")]
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
-    #[cfg(not(target_os = "macos"))]
-    let builder = builder.decorations(false);
     match builder.build() {
         Ok(window) => {
+            let _ = window.set_shadow(false);
+            if let Some(s) = &shared {
+                restore_torn_off_windows(app, s);
+            }
             let handle = app.clone();
             window.on_window_event(move |event| {
                 if matches!(event, WindowEvent::CloseRequested { .. }) {
@@ -383,11 +389,16 @@ pub(crate) fn quit_book(app: &AppHandle, asked_by: Option<&str>) {
         app.exit(0);
         return;
     };
-    let windows: HashSet<String> = WRITING_WINDOWS
+    let mut windows: HashSet<String> = WRITING_WINDOWS
         .into_iter()
         .filter(|window| Some(*window) != asked_by && app.get_webview_window(window).is_some())
         .map(str::to_string)
         .collect();
+    for label in app.webview_windows().keys() {
+        if label.starts_with("tearoff-") && Some(label.as_str()) != asked_by {
+            windows.insert(label.clone());
+        }
+    }
     let nobody = windows.is_empty();
     if !shared.quitting.begin(windows) {
         // Ya se estaba saliendo. Si la que insiste es una ventana, es que ya guardó.
@@ -461,17 +472,132 @@ pub fn open_capture_window(app: &AppHandle) {
     }
     let built = WebviewWindowBuilder::new(app, "capture", WebviewUrl::App("index.html?window=capture".into()))
         .title(title)
-        .inner_size(440.0, 572.0)
+        .inner_size(commands::FLOATING_EXPANDED_W, commands::FLOATING_EXPANDED_H)
         .resizable(false)
         .maximizable(false)
         .minimizable(false)
         .decorations(false)
+        .transparent(true)
+        .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .center()
         .build();
-    if let Err(err) = built {
-        eprintln!("No se pudo abrir la ventana de captura: {err}");
+    match built {
+        Ok(window) => {
+            let _ = window.set_shadow(false);
+        }
+        Err(err) => eprintln!("No se pudo abrir la ventana de captura: {err}"),
+    }
+}
+
+/// Abre una hoja del cuaderno en su propia ventana flotante («Arrancar hoja»).
+/// Si ya está abierta en su ventana, la trae al frente (y la expande si se pidió) sin duplicarla.
+pub(crate) fn open_tear_off_window(
+    app: &AppHandle,
+    shared: &Arc<Shared>,
+    id: i64,
+    collapsed_override: Option<bool>,
+) -> Result<model::TornOffSheetState, String> {
+    let sheet = shared
+        .db
+        .get_sheet(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "La hoja ya no existe".to_string())?;
+    let existing_list = commands::load_torn_off_sheets(&shared.db);
+    let existing = existing_list.into_iter().find(|item| item.id == id);
+    let collapsed = collapsed_override.unwrap_or_else(|| existing.as_ref().is_some_and(|e| e.collapsed));
+    let pinned = existing.as_ref().is_some_and(|e| e.pinned);
+    let state_entry = model::TornOffSheetState {
+        id,
+        collapsed,
+        pinned,
+        expanded_x: existing.as_ref().and_then(|e| e.expanded_x),
+        expanded_y: existing.as_ref().and_then(|e| e.expanded_y),
+        collapsed_x: existing.as_ref().and_then(|e| e.collapsed_x),
+        collapsed_y: existing.as_ref().and_then(|e| e.collapsed_y),
+    };
+    commands::upsert_torn_off(&shared.db, state_entry.clone());
+
+    let label = format!("tearoff-{id}");
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.set_title(&sheet.summary.title);
+        let _ = window.unminimize();
+        let _ = window.show();
+        if let Some(target_collapsed) = collapsed_override {
+            let _ = window.emit("book:tearoff-mode", target_collapsed);
+        } else if !collapsed {
+            let _ = window.emit("book:tearoff-mode", false);
+        }
+        let _ = window.set_focus();
+        let _ = app.emit(scan::EVENT_CHANGED, ());
+        return Ok(state_entry);
+    }
+
+    let (init_w, init_h) = if collapsed {
+        (commands::FLOATING_COLLAPSED_SIZE, commands::FLOATING_COLLAPSED_SIZE)
+    } else {
+        (commands::FLOATING_EXPANDED_W, commands::FLOATING_EXPANDED_H)
+    };
+    let url = format!("index.html?window=tearoff&id={id}");
+    let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+        .title(&sheet.summary.title)
+        .inner_size(init_w, init_h)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true);
+
+    let preferred_pos = if collapsed {
+        state_entry.collapsed_x.zip(state_entry.collapsed_y)
+    } else {
+        state_entry.expanded_x.zip(state_entry.expanded_y)
+    };
+    if let Some((px, py)) = preferred_pos {
+        builder = builder.position(px, py);
+    } else {
+        // Desplazar levemente cada hoja arrancada para que varias abiertas a la vez no queden
+        // exactamente una encima de la otra.
+        let open_count = app
+            .webview_windows()
+            .keys()
+            .filter(|k| k.starts_with("tearoff-"))
+            .count() as f64;
+        if open_count > 0.0 && !collapsed {
+            builder = builder.position(120.0 + (open_count * 28.0) % 280.0, 90.0 + (open_count * 28.0) % 220.0);
+        } else {
+            builder = builder.center();
+        }
+    }
+
+    let window = builder
+        .build()
+        .map_err(|err| format!("No se pudo abrir la hoja flotante: {err}"))?;
+    let _ = window.set_shadow(false);
+    let _ = commands::apply_floating_mode(
+        app,
+        &window,
+        collapsed,
+        preferred_pos.map(|p| p.0),
+        preferred_pos.map(|p| p.1),
+    );
+    let _ = app.emit(scan::EVENT_CHANGED, ());
+    Ok(state_entry)
+}
+
+/// Restaura las hojas arrancadas que habían quedado abiertas la última vez que se cerró Folio.
+pub(crate) fn restore_torn_off_windows(app: &AppHandle, shared: &Arc<Shared>) {
+    let saved = commands::load_torn_off_sheets(&shared.db);
+    for item in saved {
+        if shared.db.get_sheet(item.id).ok().flatten().is_some() {
+            let _ = open_tear_off_window(app, shared, item.id, Some(item.collapsed));
+        } else {
+            commands::remove_torn_off(&shared.db, item.id);
+        }
     }
 }
 
@@ -510,6 +636,15 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "mcp" || a == "--mcp") {
+        if let Err(err) = mcp::run_stdio_server() {
+            eprintln!("Error en el servidor MCP de Folio: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             open_main_window(app);
@@ -571,6 +706,7 @@ pub fn run() {
             ghost::create();
 
             let handle = app.handle().clone();
+            mcp::spawn_ipc_bridge(&handle, &shared);
             build_tray(&handle)?;
             ensure_autostart(&handle, &shared);
             classifier::spawn(&handle, &shared);
@@ -579,6 +715,7 @@ pub fn run() {
             // Con --hidden (inicio junto al sistema) arranca solo en la bandeja.
             if !std::env::args().any(|arg| arg == HIDDEN_ARG) {
                 open_main_window(&handle);
+                restore_torn_off_windows(&handle, &shared);
             }
             Ok(())
         })
@@ -590,6 +727,7 @@ pub fn run() {
             commands::set_sheet_category,
             commands::set_sheet_secret,
             commands::set_sheet_hidden,
+            commands::set_sheet_pinned,
             commands::create_note,
             commands::save_sheet,
             commands::open_original,
@@ -601,11 +739,18 @@ pub fn run() {
             commands::create_category,
             commands::update_category,
             commands::delete_category,
+            commands::ensure_clippings_category,
+            commands::migrate_clippings,
             commands::get_settings,
             commands::update_settings,
             commands::open_settings,
             commands::fit_window,
             commands::place_window,
+            commands::set_floating_mode,
+            commands::tear_off_sheet,
+            commands::return_torn_off_sheet,
+            commands::list_torn_off_sheets,
+            commands::update_torn_off_state,
             commands::show_ghost,
             commands::hide_ghost,
             commands::quit_app,

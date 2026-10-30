@@ -1,7 +1,7 @@
 // Medidas del cuaderno y de la ventana que lo contiene. La ventana no tiene borde para
 // redimensionarla: su tamaño sale siempre de acá, a la medida del cuaderno elegido.
 import type { CSSProperties } from 'react';
-import type { BookSize, PresetSize, Spread, TextSize } from './types';
+import type { BookSize, PresetSize, Spread, TextSize, WindowFrame } from './types';
 
 /**
  * Letra de las hojas, por tamaño: `font` es el cuerpo del texto y `line` el alto del
@@ -52,13 +52,18 @@ export interface Shape {
   spread: Spread;
   closed: boolean;
   tabs: boolean;
+  frame?: WindowFrame;
 }
 
 /** Cerrado ocupa una sola tapa aunque abierto sea de doble hoja. */
 const ratioOf = (shape: Shape) => (shape.closed ? RATIO.single : RATIO[shape.spread]);
 
 /** Tamaño de la ventana para un cuaderno dado. */
-export function windowBox(book: Box, tabs: boolean): Box {
+export function windowBox(book: Box, tabs: boolean, frame: WindowFrame = 'none'): Box {
+  if (frame === 'none') {
+    const tabHeight = tabs ? 22 : 0;
+    return { width: book.width, height: book.height + tabHeight };
+  }
   return {
     width: book.width + DESK.side * 2,
     height: book.height + (tabs ? DESK.top : DESK.topWithoutTabs) + DESK.bottom,
@@ -67,7 +72,7 @@ export function windowBox(book: Box, tabs: boolean): Box {
 
 /** El alto más grande que puede tener el cuaderno sin que la ventana se salga de la pantalla. */
 export function maxHeight(shape: Shape): number {
-  const desk = windowBox({ width: 0, height: 0 }, shape.tabs);
+  const desk = windowBox({ width: 0, height: 0 }, shape.tabs, shape.frame ?? 'none');
   const room = { width: window.screen.availWidth - desk.width, height: window.screen.availHeight - desk.height };
   return Math.max(MIN_HEIGHT, Math.floor(Math.min(room.height, room.width / ratioOf(shape))));
 }

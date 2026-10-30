@@ -1,7 +1,7 @@
 import { api } from '../../api';
 import { mark, useT } from '../../i18n';
 import { playSound } from '../../sounds';
-import type { BookSize, Prefs, Settings, TextSize, Theme } from '../../types';
+import type { BookSize, Prefs, Settings, TextSize, Theme, WindowFrame } from '../../types';
 import { ColorPicker } from '../ColorPicker';
 import { Segmented, Switch } from '../ui';
 import { CoverOptions } from './CoverOptions';
@@ -104,10 +104,37 @@ export function Look(props: {
           <Switch label={t('Solapas de categorías')} checked={prefs.tabs} onChange={(tabs) => onPrefs({ tabs })} />
         </Row>
         <Row
+          label={t('Borde de ventana')}
+          detail={t('Ninguno muestra solo el cuaderno sin margen alrededor. Transparente deja flotar el cuaderno sobre el escritorio; Sólido usa un marco opaco.')}
+        >
+          <Segmented<WindowFrame>
+            label={t('Borde de ventana')}
+            value={prefs.frame ?? 'none'}
+            onChange={(frame) => onPrefs({ frame })}
+            options={[
+              { value: 'none', label: t('Ninguno') },
+              { value: 'transparent', label: t('Transparente') },
+              { value: 'solid', label: t('Sólido') },
+            ]}
+          />
+        </Row>
+        <Row
           label={t('Ver los .md con formato')}
           detail={t('Títulos, listas, tareas y tablas, sobre el rayado. Al escribir se ve el texto plano, que es lo que se guarda.')}
         >
           <Switch label={t('Ver los .md con formato')} checked={prefs.markdown} onChange={(markdown) => onPrefs({ markdown })} />
+        </Row>
+        <Row
+          label={t('Ocultar encabezado')}
+          detail={t('Oculta el título, la fecha y los datos de la hoja para dejar más espacio al texto.')}
+        >
+          <Switch label={t('Ocultar encabezado')} checked={prefs.hideHeader} onChange={(hideHeader) => onPrefs({ hideHeader })} />
+        </Row>
+        <Row
+          label={t('Centrar título de la hoja')}
+          detail={t('Ubica el título en el centro de la hoja en lugar de alinearlo a la izquierda.')}
+        >
+          <Switch label={t('Centrar título de la hoja')} checked={prefs.centerTitle} onChange={(centerTitle) => onPrefs({ centerTitle })} />
         </Row>
       </Group>
 

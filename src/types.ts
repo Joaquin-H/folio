@@ -2,6 +2,8 @@ export type Source = 'file' | 'notepad' | 'sticky' | 'capture';
 
 export type View =
   | { kind: 'all' }
+  | { kind: 'today' }
+  | { kind: 'pinned' }
   | { kind: 'uncategorized' }
   | { kind: 'secret' }
   | { kind: 'hidden' }
@@ -27,6 +29,7 @@ export interface SheetSummary {
   /** El original ya no existe (archivo borrado o pestaña cerrada). */
   missing: boolean;
   versionCount: number;
+  pinned: boolean;
 }
 
 export interface Version {
@@ -48,6 +51,7 @@ export interface ListFilter {
   query?: string;
   beforeTs?: number;
   beforeId?: number;
+  beforePinned?: boolean;
   until?: number;
   limit?: number;
 }
@@ -62,6 +66,8 @@ export interface Category {
 
 export interface Counts {
   all: number;
+  today: number;
+  pinned: number;
   uncategorized: number;
   secret: number;
   hidden: number;
@@ -134,6 +140,8 @@ export interface Overview {
   jev: JevStatus;
   /** Carpeta donde Book guarda, como archivos de texto, las hojas que se escriben en él. */
   notesDir: string;
+  clippingsCategoryId?: number | null;
+  untaggedClippingsCount?: number;
 }
 
 export interface Root {
@@ -277,6 +285,9 @@ export type TextSize = 'small' | 'medium' | 'large' | 'xlarge';
  */
 export type CoverStyle = 'plain' | 'spots' | 'strap' | 'spine' | 'leather';
 
+/** Estilo del borde exterior de la ventana: ninguno (inmersivo), transparente (mesa flotante) o sólido (mesa opaca). */
+export type WindowFrame = 'none' | 'transparent' | 'solid';
+
 /** Preferencias de la ventana: cómo se ve el cuaderno. */
 export interface Prefs {
   theme: Theme;
@@ -286,6 +297,10 @@ export interface Prefs {
   coverStyle: CoverStyle;
   /** Mostrar las solapas de categorías arriba del cuaderno. */
   tabs: boolean;
+  /** Borde de ventana alrededor del cuaderno: ninguno (inmersivo, por defecto), transparente o sólido. */
+  frame: WindowFrame;
+  /** Preferencia anterior migrada a `frame`. */
+  borderless?: boolean;
   spread: Spread;
   size: BookSize;
   /** Alto del cuaderno, en píxeles, cuando el tamaño es a medida. */
@@ -297,6 +312,10 @@ export interface Prefs {
   textSize: TextSize;
   /** Las hojas `.md` se leen con formato (títulos, listas, tablas); escribiendo, siempre en texto plano. */
   markdown: boolean;
+  /** Ocultar el título de la hoja y los metadatos del encabezado. */
+  hideHeader: boolean;
+  /** Centrar el título de la hoja horizontalmente. */
+  centerTitle: boolean;
 }
 
 export interface FolderStat {
@@ -308,6 +327,26 @@ export interface DayCount {
   /** YYYY-MM-DD en hora local. */
   day: string;
   count: number;
+}
+
+/** Estado persistido de una hoja arrancada del cuaderno para restaurarla al reabrir Folio. */
+export interface TornOffSheetState {
+  id: number;
+  collapsed: boolean;
+  pinned: boolean;
+  expandedX?: number | null;
+  expandedY?: number | null;
+  collapsedX?: number | null;
+  collapsedY?: number | null;
+}
+
+/** Posición y tamaño lógicos de una ventana flotante (hoja suelta o arrancada). */
+export interface FloatingRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  collapsed: boolean;
 }
 
 /** Asistentes de IA a los que Book les puede dejar instrucciones para tomar notas. */

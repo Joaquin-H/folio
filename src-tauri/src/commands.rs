@@ -96,6 +96,9 @@ pub async fn get_sheet(state: Ctx<'_>, id: i64) -> Res<Option<SheetDetail>> {
 #[tauri::command]
 pub async fn get_overview(state: Ctx<'_>) -> Res<Overview> {
     let db = &state.db;
+    let notes_dir = crate::notes_dir();
+    let clippings_category_id = db.clippings_category_id();
+    let untagged_clippings_count = db.untagged_clippings(notes_dir.as_deref()).map(|v| v.len()).unwrap_or(0);
     Ok(Overview {
         counts: db.counts().map_err(e)?,
         categories: db.categories().map_err(e)?,
@@ -106,8 +109,23 @@ pub async fn get_overview(state: Ctx<'_>) -> Res<Overview> {
             last_scan_files: db.get_setting("last_scan_files").and_then(|v| v.parse().ok()),
         },
         jev: jev_status(&state),
-        notes_dir: crate::notes_dir().map(|dir| dir.to_string_lossy().to_string()).unwrap_or_default(),
+        notes_dir: notes_dir.map(|dir| dir.to_string_lossy().to_string()).unwrap_or_default(),
+        clippings_category_id,
+        untagged_clippings_count,
     })
+}
+
+#[tauri::command]
+pub async fn ensure_clippings_category(state: Ctx<'_>) -> Res<i64> {
+    state.db.ensure_clippings_category().map_err(e)
+}
+
+#[tauri::command]
+pub async fn migrate_clippings(app: AppHandle, state: Ctx<'_>) -> Res<usize> {
+    let notes_dir = crate::notes_dir();
+    let count = state.db.migrate_clippings(notes_dir.as_deref()).map_err(e)?;
+    notify_changed(&app);
+    Ok(count)
 }
 
 #[tauri::command]
@@ -137,6 +155,13 @@ pub async fn set_sheet_hidden(app: AppHandle, state: Ctx<'_>, id: i64, hidden: b
     notify_changed(&app);
     // Lo mismo al volver de la papelera.
     state.ping_classifier();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_sheet_pinned(app: AppHandle, state: Ctx<'_>, id: i64, pinned: bool) -> Res<()> {
+    state.db.set_sheet_pinned(id, pinned).map_err(e)?;
+    notify_changed(&app);
     Ok(())
 }
 
@@ -255,7 +280,7 @@ pub(crate) fn index_file(db: &Db, path: &Path, content: String) -> Res<i64> {
 }
 
 /// Crea el archivo de una hoja nueva en `dir` y la registra. Devuelve su id y su ruta.
-fn new_note(db: &Db, dir: &Path, title: &str, content: &str) -> Res<(i64, PathBuf)> {
+pub(crate) fn new_note(db: &Db, dir: &Path, title: &str, content: &str) -> Res<(i64, PathBuf)> {
     let _turn = writing();
     let trimmed = title.trim();
     let is_en = db.get_setting("locale").as_deref() == Some("en");
@@ -269,7 +294,7 @@ fn new_note(db: &Db, dir: &Path, title: &str, content: &str) -> Res<(i64, PathBu
     Ok((id, path))
 }
 
-fn detail(shared: &Shared, id: i64) -> Res<SheetDetail> {
+pub(crate) fn detail(shared: &Shared, id: i64) -> Res<SheetDetail> {
     shared.db.get_sheet(id).map_err(e)?.ok_or_else(|| "La hoja ya no existe".to_string())
 }
 
@@ -420,7 +445,14 @@ fn rename_target(db: &Db, notes_dir: Option<&Path>, id: i64, path: &Path, title:
     let Some(dir) = path.parent().filter(|dir| notes_dir == Some(*dir)) else {
         return Ok(None);
     };
-    let stem = safe_stem(title).ok_or("El nombre de la hoja no sirve como nombre de archivo")?;
+    let raw_title = title.trim();
+    let title_stem = raw_title
+        .strip_suffix(".md")
+        .or_else(|| raw_title.strip_suffix(".MD"))
+        .or_else(|| raw_title.strip_suffix(".txt"))
+        .or_else(|| raw_title.strip_suffix(".TXT"))
+        .unwrap_or(raw_title);
+    let stem = safe_stem(title_stem).ok_or("El nombre de la hoja no sirve como nombre de archivo")?;
     if path.file_stem().is_some_and(|current| current.to_string_lossy() == stem) {
         return Ok(None);
     }
@@ -428,13 +460,7 @@ fn rename_target(db: &Db, notes_dir: Option<&Path>, id: i64, path: &Path, title:
     // Cambiar solo mayúsculas es el mismo archivo para Windows: eso sí se permite.
     let same_file = |target: &Path| target.to_string_lossy().to_lowercase() == path.to_string_lossy().to_lowercase();
     let wanted = dir.join(format!("{stem}.{extension}"));
-    if wanted.exists() && !same_file(&wanted) {
-        return Err("Ya hay un archivo con ese nombre".into());
-    }
-    // Sin archivo, el nombre igual puede ser el original de otra hoja del Book (uno que
-    // se borró por fuera: la hoja quedó "sin original"). Esa hoja no se pisa ni se
-    // mezcla con esta: el nombre se numera, igual que al crear una hoja.
-    let taken = |target: &Path| db.file_key_owner(&target.to_string_lossy()).is_some_and(|owner| owner != id);
+    let taken = |target: &Path| (target.exists() && !same_file(target)) || db.file_key_owner(&target.to_string_lossy()).is_some_and(|owner| owner != id);
     if !taken(&wanted) {
         return Ok(Some(wanted));
     }
@@ -445,7 +471,7 @@ fn rename_target(db: &Db, notes_dir: Option<&Path>, id: i64, path: &Path, title:
             // Ya se llama así por un guardado anterior.
             return Ok(None);
         }
-        if !numbered.exists() && !taken(&numbered) {
+        if !taken(&numbered) {
             return Ok(Some(numbered));
         }
         copy += 1;
@@ -557,20 +583,36 @@ mod tests {
         notes.create("dos", "texto de dos");
         let base = notes.sheet(id).hash;
 
-        // Ya hay un archivo con ese nombre, o el título no sirve como nombre: no se
-        // escribe nada, ni en el archivo ni en el Book.
-        for title in ["dos", "///"] {
-            assert!(notes.save(id, "texto de uno, editado", Some(title), &base).is_err(), "{title}");
-            assert_eq!(fs::read_to_string(&path).unwrap(), "texto de uno", "{title}");
-            assert_eq!(notes.sheet(id).hash, base, "{title}");
-        }
-        // Con un título que sí sirve, ese mismo guardado entra: no hay un falso "el
-        // archivo cambió fuera de Book".
-        notes.save(id, "texto de uno, editado", Some("tres"), &base).unwrap();
-        let renamed = notes.dir.join("tres.txt");
+        // Si el título no sirve como nombre de archivo, el guardado falla: no se escribe nada.
+        assert!(notes.save(id, "texto de uno, editado", Some("///"), &base).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "texto de uno");
+        assert_eq!(notes.sheet(id).hash, base);
+
+        // Si el título ya existe en otro archivo, auto-numera con sufijo `(2)` sin fallar:
+        notes.save(id, "texto de uno, editado", Some("dos"), &base).unwrap();
+        let renamed = notes.dir.join("dos (2).txt");
         assert_eq!(fs::read_to_string(&renamed).unwrap(), "texto de uno, editado");
+        assert_eq!(notes.sheet(id).summary.title, "dos (2).txt");
         assert_eq!(notes.sheet(id).summary.path, Some(key(&renamed)));
         assert!(!path.exists());
+
+        // Si se renombra otra hoja al mismo nombre repetido, numera a `(3)`:
+        let (id_otro, path_otro) = notes.create("cuatro", "texto de cuatro");
+        let base_otro = notes.sheet(id_otro).hash;
+        notes.save(id_otro, "texto de cuatro, editado", Some("dos"), &base_otro).unwrap();
+        let renamed3 = notes.dir.join("dos (3).txt");
+        assert_eq!(fs::read_to_string(&renamed3).unwrap(), "texto de cuatro, editado");
+        assert_eq!(notes.sheet(id_otro).summary.title, "dos (3).txt");
+        assert!(!path_otro.exists());
+
+        // Con un título que sí sirve libre, renombra directo:
+        let base_dos = notes.sheet(id).hash;
+        notes.save(id, "texto de uno, editado tres", Some("tres"), &base_dos).unwrap();
+        let renamed_tres = notes.dir.join("tres.txt");
+        assert_eq!(fs::read_to_string(&renamed_tres).unwrap(), "texto de uno, editado tres");
+        assert_eq!(notes.sheet(id).summary.title, "tres.txt");
+        assert_eq!(notes.sheet(id).summary.path, Some(key(&renamed_tres)));
+        assert!(!renamed.exists());
     }
 
     #[test]
@@ -661,6 +703,119 @@ mod tests {
             assert!(!openable(url), "{url}");
         }
     }
+
+    #[test]
+    fn expandir_y_colapsar_hoja_flotante_respeta_bordes_y_apila_iconos() {
+        // Icono colapsado cerca del borde izquierdo (x = 12): debe expandir hacia la derecha, nunca quedar negativo.
+        let r_left = compute_floating_rect(0.0, 0.0, 1920.0, 1040.0, 12.0, 100.0, 52.0, false, None, None, &[]);
+        assert_eq!(r_left.x, 12.0);
+        assert_eq!(r_left.y, 100.0);
+        assert_eq!(r_left.width, FLOATING_EXPANDED_W);
+        assert_eq!(r_left.height, FLOATING_EXPANDED_H);
+
+        // Icono colapsado cerca del borde derecho (x = 1860): debe expandir hacia la izquierda, dentro de work_area.
+        let r_right = compute_floating_rect(0.0, 0.0, 1920.0, 1040.0, 1860.0, 100.0, 52.0, false, None, None, &[]);
+        assert!(r_right.x + r_right.width <= 1920.0 - 8.0);
+        assert_eq!(r_right.x, 1860.0 + 52.0 - FLOATING_EXPANDED_W);
+
+        // Icono colapsado cerca del borde inferior (y = 980): debe expandir hacia arriba y quedar dentro de work_area.
+        let r_bottom = compute_floating_rect(0.0, 0.0, 1920.0, 1040.0, 100.0, 980.0, 52.0, false, None, None, &[]);
+        assert!(r_bottom.y >= 8.0);
+        assert!(r_bottom.y + r_bottom.height <= 1040.0 - 8.0);
+
+        // Al colapsar varias hojas en la misma posición, se apilan sin superponerse.
+        let c1 = compute_floating_rect(0.0, 0.0, 1920.0, 1040.0, 1400.0, 120.0, FLOATING_EXPANDED_W, true, None, None, &[]);
+        let c2 = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            1400.0,
+            120.0,
+            FLOATING_EXPANDED_W,
+            true,
+            None,
+            None,
+            &[(c1.x, c1.y)],
+        );
+        let c3 = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            1400.0,
+            120.0,
+            FLOATING_EXPANDED_W,
+            true,
+            None,
+            None,
+            &[(c1.x, c1.y), (c2.x, c2.y)],
+        );
+        assert_eq!(c1.x, c2.x);
+        assert!((c2.y - c1.y).abs() >= FLOATING_COLLAPSED_SIZE);
+        assert!((c3.y - c2.y).abs() >= FLOATING_COLLAPSED_SIZE);
+    }
+
+    #[test]
+    fn anclaje_espacial_insitu_al_colapsar_hoja_flotante_tras_moverla() {
+        // Usuario expande una hoja, la mueve a (200, 150) en la mitad izquierda de la pantalla.
+        // Al colapsar, el icono debe anclarse in-situ en (200, 150), ignorando la posición vieja guardada (1400, 120).
+        let c_left = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            200.0,
+            150.0,
+            FLOATING_EXPANDED_W,
+            true,
+            Some(1400.0),
+            Some(120.0),
+            &[],
+        );
+        assert_eq!(c_left.x, 200.0);
+        assert_eq!(c_left.y, 150.0);
+        assert_eq!(c_left.width, FLOATING_COLLAPSED_SIZE);
+        assert_eq!(c_left.height, FLOATING_COLLAPSED_SIZE);
+
+        // Si la movió a la mitad derecha (x = 1200, y = 250), al colapsar se ancla en su esquina superior derecha
+        // (1200 + 440 - 52 = 1588, 250), respetando in-situ la nueva posición.
+        let c_right = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            1200.0,
+            250.0,
+            FLOATING_EXPANDED_W,
+            true,
+            Some(100.0),
+            Some(80.0),
+            &[],
+        );
+        assert_eq!(c_right.x, 1200.0 + FLOATING_EXPANDED_W - FLOATING_COLLAPSED_SIZE);
+        assert_eq!(c_right.y, 250.0);
+
+        // Al expandir desde esa posición colapsada (1588, 250), debe abrir hacia la izquierda (porque está en la derecha)
+        // manteniendo anclado el borde derecho en 1588 + 52 = 1640, expandiendo a x = 1200.
+        let exp = compute_floating_rect(
+            0.0,
+            0.0,
+            1920.0,
+            1040.0,
+            c_right.x,
+            c_right.y,
+            FLOATING_COLLAPSED_SIZE,
+            false,
+            None,
+            None,
+            &[],
+        );
+        assert_eq!(exp.x, 1200.0);
+        assert_eq!(exp.y, 250.0);
+        assert_eq!(exp.width, FLOATING_EXPANDED_W);
+        assert_eq!(exp.height, FLOATING_EXPANDED_H);
+    }
 }
 
 /// Fija de una sola vez la posición y el tamaño de la ventana (borde exterior, en
@@ -687,6 +842,361 @@ fn set_window_rect(window: &tauri::WebviewWindow, x: i32, y: i32, width: i32, he
 fn set_window_rect(window: &tauri::WebviewWindow, x: i32, y: i32, width: i32, height: i32) -> Res<()> {
     window.set_size(tauri::PhysicalSize::new(width.max(1) as u32, height.max(1) as u32)).map_err(e)?;
     window.set_position(tauri::PhysicalPosition::new(x, y)).map_err(e)
+}
+
+pub(crate) const FLOATING_EXPANDED_W: f64 = 440.0;
+pub(crate) const FLOATING_EXPANDED_H: f64 = 572.0;
+pub(crate) const FLOATING_COLLAPSED_SIZE: f64 = 52.0;
+const FLOATING_STACK_GAP: f64 = 8.0;
+const FLOATING_EDGE_PAD: f64 = 8.0;
+
+/// Calcula hacia dónde expandir o colapsar una ventana flotante (hoja suelta o arrancada)
+/// dentro del área útil del monitor (`work_area`) y la acomoda sin superponer íconos colapsados.
+pub(crate) fn compute_floating_rect(
+    work_left: f64,
+    work_top: f64,
+    work_width: f64,
+    work_height: f64,
+    current_x: f64,
+    current_y: f64,
+    current_w: f64,
+    target_collapsed: bool,
+    saved_x: Option<f64>,
+    saved_y: Option<f64>,
+    occupied_collapsed: &[(f64, f64)],
+) -> FloatingRect {
+    let min_x = work_left + FLOATING_EDGE_PAD;
+    let min_y = work_top + FLOATING_EDGE_PAD;
+    let right = work_left + work_width - FLOATING_EDGE_PAD;
+    let bottom = work_top + work_height - FLOATING_EDGE_PAD;
+    let mid_x = work_left + work_width / 2.0;
+
+    if !target_collapsed {
+        let w = FLOATING_EXPANDED_W;
+        let h = FLOATING_EXPANDED_H;
+        let max_x = (right - w).max(min_x);
+        let max_y = (bottom - h).max(min_y);
+
+        let was_collapsed = current_w <= FLOATING_COLLAPSED_SIZE + 20.0;
+        let (raw_x, raw_y) = if was_collapsed {
+            // Al expandir desde el ícono colapsado, abrimos hacia el lado donde hay espacio
+            // en el monitor actual, manteniendo anclado el borde más cercano al borde de la pantalla.
+            let space_right = right - current_x;
+            let space_left = (current_x + FLOATING_COLLAPSED_SIZE) - min_x;
+            let expand_left = (current_x + FLOATING_COLLAPSED_SIZE / 2.0 > mid_x && space_left >= w)
+                || (space_right < w && space_left > space_right);
+            let tx = if expand_left {
+                current_x + FLOATING_COLLAPSED_SIZE - w
+            } else {
+                current_x
+            };
+            let space_down = bottom - current_y;
+            let space_up = (current_y + FLOATING_COLLAPSED_SIZE) - min_y;
+            let expand_up = space_down < h && space_up > space_down;
+            let ty = if expand_up {
+                current_y + FLOATING_COLLAPSED_SIZE - h
+            } else {
+                current_y
+            };
+            (tx, ty)
+        } else {
+            (saved_x.unwrap_or(current_x), saved_y.unwrap_or(current_y))
+        };
+
+        FloatingRect {
+            x: raw_x.clamp(min_x, max_x).round(),
+            y: raw_y.clamp(min_y, max_y).round(),
+            width: w,
+            height: h,
+            collapsed: false,
+        }
+    } else {
+        let s = FLOATING_COLLAPSED_SIZE;
+        let max_x = (right - s).max(min_x);
+        let max_y = (bottom - s).max(min_y);
+
+        let was_expanded = current_w > FLOATING_COLLAPSED_SIZE + 20.0;
+        let (raw_x, raw_y) = if was_expanded {
+            // Anclaje espacial in-situ: el usuario movió la ventana expandida y al colapsar
+            // debe anclarse en la zona actual de la ventana expandida (esquina superior derecha
+            // si está en la mitad derecha de la pantalla, o esquina superior izquierda si está en la mitad izquierda),
+            // ignorando posiciones viejas guardadas previas al movimiento.
+            let center_x = current_x + current_w / 2.0;
+            let tx = if center_x > mid_x {
+                current_x + current_w - s
+            } else {
+                current_x
+            };
+            (tx, current_y)
+        } else if let (Some(sx), Some(sy)) = (saved_x, saved_y) {
+            (sx, sy)
+        } else {
+            (current_x, current_y)
+        };
+
+        let mut x = raw_x.clamp(min_x, max_x).round();
+        let mut y = raw_y.clamp(min_y, max_y).round();
+
+        // Apilar íconos colapsados sin superponerse.
+        let step = s + FLOATING_STACK_GAP;
+        let overlaps = |cx: f64, cy: f64| {
+            occupied_collapsed
+                .iter()
+                .any(|&(ox, oy)| (cx - ox).abs() < s - 2.0 && (cy - oy).abs() < s - 2.0)
+        };
+        if overlaps(x, y) {
+            let mut placed = false;
+            // Primero probamos hacia abajo en la misma columna, luego hacia arriba, y si no, desplazando X.
+            for col in 0..6 {
+                let try_x = if col == 0 {
+                    x
+                } else if x + (col as f64) * step <= max_x {
+                    x + (col as f64) * step
+                } else {
+                    (x - (col as f64) * step).max(min_x)
+                };
+                let mut try_y = y;
+                while try_y <= max_y {
+                    if !overlaps(try_x, try_y) {
+                        x = try_x.round();
+                        y = try_y.round();
+                        placed = true;
+                        break;
+                    }
+                    try_y += step;
+                }
+                if placed {
+                    break;
+                }
+                let mut try_y = y - step;
+                while try_y >= min_y {
+                    if !overlaps(try_x, try_y) {
+                        x = try_x.round();
+                        y = try_y.round();
+                        placed = true;
+                        break;
+                    }
+                    try_y -= step;
+                }
+                if placed {
+                    break;
+                }
+            }
+        }
+
+        FloatingRect {
+            x,
+            y,
+            width: s,
+            height: s,
+            collapsed: true,
+        }
+    }
+}
+
+/// Posiciones lógicas de todas las demás ventanas flotantes que están colapsadas en este momento.
+pub(crate) fn other_collapsed_positions(app: &AppHandle, exclude_label: &str) -> Vec<(f64, f64)> {
+    let mut out = Vec::new();
+    for (label, win) in app.webview_windows() {
+        if label == exclude_label {
+            continue;
+        }
+        if label != "capture" && !label.starts_with("tearoff-") {
+            continue;
+        }
+        let Ok(scale) = win.scale_factor() else { continue };
+        let scale = if scale > 0.0 { scale } else { 1.0 };
+        let Ok(size) = win.inner_size() else { continue };
+        let lw = f64::from(size.width) / scale;
+        if lw <= FLOATING_COLLAPSED_SIZE + 20.0 {
+            if let Ok(pos) = win.outer_position() {
+                out.push((f64::from(pos.x) / scale, f64::from(pos.y) / scale));
+            }
+        }
+    }
+    out
+}
+
+/// Aplica el modo expandido o colapsado a una ventana flotante respetando el `work_area` del
+/// monitor actual y apilando los íconos colapsados sin superponerlos.
+pub(crate) fn apply_floating_mode(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    collapsed: bool,
+    preferred_x: Option<f64>,
+    preferred_y: Option<f64>,
+) -> Res<FloatingRect> {
+    let scale = window.scale_factor().map_err(e)?;
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    let outer = window.outer_position().map_err(e)?;
+    let inner_size = window.inner_size().map_err(e)?;
+    let current_x = f64::from(outer.x) / scale;
+    let current_y = f64::from(outer.y) / scale;
+    let current_w = f64::from(inner_size.width) / scale;
+
+    let (work_left, work_top, work_w, work_h) = if let Some(monitor) = window.current_monitor().map_err(e)? {
+        let area = monitor.work_area();
+        (
+            f64::from(area.position.x) / scale,
+            f64::from(area.position.y) / scale,
+            f64::from(area.size.width) / scale,
+            f64::from(area.size.height) / scale,
+        )
+    } else {
+        (0.0, 0.0, 1920.0, 1040.0)
+    };
+
+    let occupied = if collapsed {
+        other_collapsed_positions(app, window.label())
+    } else {
+        Vec::new()
+    };
+
+    let rect = compute_floating_rect(
+        work_left,
+        work_top,
+        work_w,
+        work_h,
+        current_x,
+        current_y,
+        current_w,
+        collapsed,
+        preferred_x,
+        preferred_y,
+        &occupied,
+    );
+
+    let phys_x = (rect.x * scale).round() as i32;
+    let phys_y = (rect.y * scale).round() as i32;
+    let phys_w = (rect.width * scale).round() as i32;
+    let phys_h = (rect.height * scale).round() as i32;
+    set_window_rect(window, phys_x, phys_y, phys_w, phys_h)?;
+    let _ = window.set_shadow(false);
+    if !collapsed {
+        let _ = window.set_focus();
+    }
+    Ok(rect)
+}
+
+#[tauri::command]
+pub async fn set_floating_mode(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    state: Ctx<'_>,
+    collapsed: bool,
+    preferred_x: Option<f64>,
+    preferred_y: Option<f64>,
+) -> Res<FloatingRect> {
+    let _ = window.set_shadow(false);
+    let rect = apply_floating_mode(&app, &window, collapsed, preferred_x, preferred_y)?;
+    let _ = window.set_shadow(false);
+    if let Some(id_str) = window.label().strip_prefix("tearoff-") {
+        if let Ok(id) = id_str.parse::<i64>() {
+            update_saved_torn_off(&state.db, id, Some(collapsed), None, Some(rect.x), Some(rect.y));
+        }
+    }
+    Ok(rect)
+}
+
+const TORN_OFF_KEY: &str = "torn_off_sheets";
+
+pub(crate) fn load_torn_off_sheets(db: &Db) -> Vec<TornOffSheetState> {
+    db.get_setting(TORN_OFF_KEY)
+        .and_then(|raw| serde_json::from_str::<Vec<TornOffSheetState>>(&raw).ok())
+        .unwrap_or_default()
+}
+
+pub(crate) fn save_torn_off_sheets(db: &Db, list: &[TornOffSheetState]) {
+    if let Ok(json) = serde_json::to_string(list) {
+        let _ = db.set_setting(TORN_OFF_KEY, &json);
+    }
+}
+
+pub(crate) fn upsert_torn_off(db: &Db, entry: TornOffSheetState) {
+    let mut list = load_torn_off_sheets(db);
+    if let Some(existing) = list.iter_mut().find(|item| item.id == entry.id) {
+        *existing = entry;
+    } else {
+        list.push(entry);
+    }
+    save_torn_off_sheets(db, &list);
+}
+
+pub(crate) fn update_saved_torn_off(
+    db: &Db,
+    id: i64,
+    collapsed: Option<bool>,
+    pinned: Option<bool>,
+    x: Option<f64>,
+    y: Option<f64>,
+) {
+    let mut list = load_torn_off_sheets(db);
+    if let Some(item) = list.iter_mut().find(|item| item.id == id) {
+        if let Some(c) = collapsed {
+            item.collapsed = c;
+        }
+        if let Some(p) = pinned {
+            item.pinned = p;
+        }
+        if let (Some(px), Some(py)) = (x, y) {
+            if item.collapsed {
+                item.collapsed_x = Some(px);
+                item.collapsed_y = Some(py);
+            } else {
+                item.expanded_x = Some(px);
+                item.expanded_y = Some(py);
+            }
+        }
+        save_torn_off_sheets(db, &list);
+    }
+}
+
+pub(crate) fn remove_torn_off(db: &Db, id: i64) {
+    let mut list = load_torn_off_sheets(db);
+    let before = list.len();
+    list.retain(|item| item.id != id);
+    if list.len() != before {
+        save_torn_off_sheets(db, &list);
+    }
+}
+
+#[tauri::command]
+pub async fn tear_off_sheet(
+    app: AppHandle,
+    state: Ctx<'_>,
+    id: i64,
+    collapsed: Option<bool>,
+) -> Res<TornOffSheetState> {
+    crate::open_tear_off_window(&app, &state, id, collapsed)
+}
+
+#[tauri::command]
+pub async fn return_torn_off_sheet(app: AppHandle, state: Ctx<'_>, id: i64) -> Res<()> {
+    remove_torn_off(&state.db, id);
+    let label = format!("tearoff-{id}");
+    if let Some(win) = app.get_webview_window(&label) {
+        let _ = win.destroy();
+    }
+    notify_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_torn_off_sheets(state: Ctx<'_>) -> Res<Vec<TornOffSheetState>> {
+    Ok(load_torn_off_sheets(&state.db))
+}
+
+#[tauri::command]
+pub async fn update_torn_off_state(
+    state: Ctx<'_>,
+    id: i64,
+    collapsed: Option<bool>,
+    pinned: Option<bool>,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Res<()> {
+    update_saved_torn_off(&state.db, id, collapsed, pinned, x, y);
+    Ok(())
 }
 
 /// Dónde quedaría el interior de la ventana (píxeles físicos: x, y, ancho, alto) si se
@@ -723,7 +1233,9 @@ pub async fn place_window(window: tauri::WebviewWindow, dx: f64, dy: f64, width:
         y - (inner.y - outer.y),
         w + outer_size.width as i32 - inner_size.width as i32,
         h + outer_size.height as i32 - inner_size.height as i32,
-    )
+    )?;
+    let _ = window.set_shadow(false);
+    Ok(())
 }
 
 /// Muestra el fantasma del cuaderno donde quedaría con ese cambio: los mismos datos que
@@ -790,6 +1302,7 @@ pub async fn fit_window(
     if target != current {
         window.set_position(target).map_err(e)?;
     }
+    let _ = window.set_shadow(false);
     Ok(())
 }
 

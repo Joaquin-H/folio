@@ -7,6 +7,7 @@ import type {
   CaptureSeed,
   CategorySuggestion,
   ClassifierTest,
+  FloatingRect,
   GlobalShortcut,
   DayCount,
   FolderStat,
@@ -20,6 +21,7 @@ import type {
   SettingsPatch,
   SheetDetail,
   SheetSummary,
+  TornOffSheetState,
 } from './types';
 
 export interface Api {
@@ -30,6 +32,7 @@ export interface Api {
   setSheetCategory(id: number, categoryId: number | null): Promise<void>;
   setSheetSecret(id: number, secret: boolean): Promise<void>;
   setSheetHidden(id: number, hidden: boolean): Promise<void>;
+  setSheetPinned(id: number, pinned: boolean): Promise<void>;
   /**
    * Crea una hoja escrita en Book: un archivo de texto en la carpeta de Book con ese
    * título como nombre. Con `categoryId` nace en esa categoría; con `open`, además se
@@ -50,6 +53,8 @@ export interface Api {
   createCategory(name: string, description: string, color: string): Promise<number>;
   updateCategory(id: number, name: string, description: string, color: string): Promise<void>;
   deleteCategory(id: number): Promise<void>;
+  ensureClippingsCategory(): Promise<number>;
+  migrateClippings(): Promise<number>;
   getSettings(): Promise<Settings>;
   updateSettings(patch: SettingsPatch): Promise<void>;
   pickFolder(): Promise<string | null>;
@@ -123,6 +128,22 @@ export interface Api {
   /** Inicia el dictado por voz de Windows (Win + H). */
   startDictation(): Promise<void>;
   /**
+   * Abre una hoja del cuaderno en su propia ventana flotante («Arrancar hoja»).
+   * Si ya está abierta, la trae al frente sin duplicar la ventana.
+   */
+  tearOffSheet(id: number, collapsed?: boolean): Promise<TornOffSheetState>;
+  /** Devuelve una hoja arrancada al cuaderno (cierra su ventana flotante y la saca de la lista persistida). */
+  returnTornOffSheet(id: number): Promise<void>;
+  /** Lista las hojas arrancadas actualmente abiertas/persistidas. */
+  listTornOffSheets(): Promise<TornOffSheetState[]>;
+  /** Actualiza el estado (colapsada, fijada, posición) de una hoja arrancada. */
+  updateTornOffState(id: number, patch: { collapsed?: boolean; pinned?: boolean; x?: number; y?: number }): Promise<void>;
+  /**
+   * Expande o colapsa una ventana flotante respetando los bordes del monitor actual (`work_area`)
+   * y apilando los íconos colapsados sin superponerlos.
+   */
+  setFloatingMode(collapsed: boolean, preferredX?: number, preferredY?: number): Promise<FloatingRect>;
+  /**
    * Avisa a la hoja suelta, si ya estaba abierta, de que le llegó un texto nuevo
    * (`takeCaptureSeed` lo entrega). Devuelve la función para dejar de escuchar.
    */
@@ -134,9 +155,17 @@ export interface Api {
   onQuitRequested(handler: () => Promise<void>): () => void;
   /** Avisa cuando el Book cambió. Devuelve la función para dejar de escuchar. */
   onChanged(callback: () => void): () => void;
+  /** Avisa cuando un recorte se guardó exitosamente o hubo feedback de captura. */
+  onClippingSaved(callback: (payload: { name: string; title: string; body: string; message: string; sheetId?: number | null }) => void): () => void;
+  /** Avisa cuando un agente o comando externo pidió abrir el mapa del cuaderno. */
+  onOpenMap(callback: () => void): () => void;
+  /** Avisa cuando un agente o comando externo pidió abrir una hoja concreta en el cuaderno. */
+  onFocusSheet(callback: (id: number) => void): () => void;
   window: {
     /** Cierra la ventana; Book sigue en la bandeja del sistema. */
     hide(): void;
+    /** Minimiza la ventana. */
+    minimize(): void;
     /** Cierra Book del todo. */
     quit(): void;
     /** Lleva la ventana a ese tamaño (píxeles lógicos) sin que se salga de la pantalla. */
@@ -184,6 +213,7 @@ const tauriApi: Api = {
   setSheetCategory: (id, categoryId) => invoke('set_sheet_category', { id, categoryId }),
   setSheetSecret: (id, secret) => invoke('set_sheet_secret', { id, secret }),
   setSheetHidden: (id, hidden) => invoke('set_sheet_hidden', { id, hidden }),
+  setSheetPinned: (id, pinned) => invoke('set_sheet_pinned', { id, pinned }),
   createNote: (title, content, categoryId, open = false) => invoke('create_note', { title, content, categoryId, open }),
   saveSheet: (id, content, options = {}) =>
     invoke('save_sheet', { id, content, title: options.title, baseHash: options.baseHash, force: options.force ?? false }),
@@ -195,6 +225,8 @@ const tauriApi: Api = {
   updateCategory: (id, name, description, color) =>
     invoke('update_category', { id, name, description, color }),
   deleteCategory: (id) => invoke('delete_category', { id }),
+  ensureClippingsCategory: () => invoke('ensure_clippings_category'),
+  migrateClippings: () => invoke('migrate_clippings'),
   getSettings: () => invoke('get_settings'),
   updateSettings: (patch) => invoke('update_settings', { patch }),
   pickFolder: () => invoke('pick_folder'),
@@ -225,6 +257,12 @@ const tauriApi: Api = {
   integrationText: (tool) => invoke('integration_text', { tool }),
   takeCaptureSeed: () => invoke('take_capture_seed'),
   startDictation: () => invoke('start_dictation'),
+  tearOffSheet: (id, collapsed) => invoke('tear_off_sheet', { id, collapsed }),
+  returnTornOffSheet: (id) => invoke('return_torn_off_sheet', { id }),
+  listTornOffSheets: () => invoke('list_torn_off_sheets'),
+  updateTornOffState: (id, patch) => invoke('update_torn_off_state', { id, ...patch }),
+  setFloatingMode: (collapsed, preferredX, preferredY) =>
+    invoke('set_floating_mode', { collapsed, preferredX, preferredY }),
   onCaptureSeed(callback) {
     const unlisten = listen('book:capture-seed', callback);
     return () => void unlisten.then((stop) => stop());
@@ -240,8 +278,21 @@ const tauriApi: Api = {
     const unlisten = listen('book:changed', callback);
     return () => void unlisten.then((stop) => stop());
   },
+  onClippingSaved(callback) {
+    const unlisten = listen<{ name: string; title: string; body: string; message: string; sheetId?: number | null }>('book:clipping-saved', ({ payload }) => callback(payload));
+    return () => void unlisten.then((stop) => stop());
+  },
+  onOpenMap(callback) {
+    const unlisten = listen('book:open-map', callback);
+    return () => void unlisten.then((stop) => stop());
+  },
+  onFocusSheet(callback) {
+    const unlisten = listen<number>('book:focus-sheet', ({ payload }) => callback(payload));
+    return () => void unlisten.then((stop) => stop());
+  },
   window: {
     hide: () => void getCurrentWindow().close(),
+    minimize: () => void getCurrentWindow().minimize(),
     quit: () => void invoke('quit_app'),
     fit: (width, height, center) => invoke('fit_window', { width, height, center }),
     place: (spot) => invoke('place_window', { ...spot }),

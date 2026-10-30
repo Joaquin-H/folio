@@ -4,7 +4,7 @@ import { accentFor } from './format';
 import { setLanguage } from './i18n';
 import { MIN_HEIGHT, PRESET_HEIGHT, textVars } from './layout';
 import { setSoundsEnabled } from './sounds';
-import type { ListFilter, Prefs, SheetSummary } from './types';
+import type { ListFilter, Prefs, SheetSummary, WindowFrame } from './types';
 
 const PAGE = 40;
 
@@ -24,6 +24,8 @@ const DEFAULT_PREFS: Prefs = {
   cover: null,
   coverStyle: 'plain',
   tabs: true,
+  frame: 'none',
+  borderless: false,
   spread: 'double',
   size: 'standard',
   height: PRESET_HEIGHT.standard,
@@ -31,6 +33,8 @@ const DEFAULT_PREFS: Prefs = {
   sounds: true,
   textSize: 'medium',
   markdown: true,
+  hideHeader: false,
+  centerTitle: false,
 };
 
 export function loadPrefs(): Prefs {
@@ -38,6 +42,12 @@ export function loadPrefs(): Prefs {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<Prefs>;
     const height = typeof saved.height === 'number' && saved.height >= MIN_HEIGHT ? Math.round(saved.height) : null;
     const lang = saved.lang === 'es' || saved.lang === 'en' ? saved.lang : 'auto';
+    const frame: WindowFrame =
+      saved.frame === 'none' || saved.frame === 'transparent' || saved.frame === 'solid'
+        ? saved.frame
+        : saved.borderless === true
+          ? 'transparent'
+          : 'none';
     setLanguage(lang);
     return {
       theme: saved.theme === 'light' || saved.theme === 'dark' ? saved.theme : 'auto',
@@ -48,6 +58,8 @@ export function loadPrefs(): Prefs {
           ? saved.coverStyle
           : 'plain',
       tabs: saved.tabs !== false,
+      frame,
+      borderless: frame === 'transparent',
       spread: saved.spread === 'single' ? 'single' : 'double',
       size:
         saved.size === 'pocket' || saved.size === 'full' || (saved.size === 'custom' && height !== null)
@@ -58,6 +70,8 @@ export function loadPrefs(): Prefs {
       sounds: saved.sounds !== false,
       textSize: saved.textSize === 'small' || saved.textSize === 'large' || saved.textSize === 'xlarge' ? saved.textSize : 'medium',
       markdown: saved.markdown !== false,
+      hideHeader: saved.hideHeader === true,
+      centerTitle: saved.centerTitle === true,
     };
   } catch {
     return DEFAULT_PREFS;
@@ -78,6 +92,9 @@ export function applyPrefs(prefs: Prefs) {
   const dark = prefs.theme === 'dark' || (prefs.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   root.dataset.theme = dark ? 'dark' : 'light';
   root.dataset.text = prefs.textSize;
+  const frame: WindowFrame = prefs.frame ?? (prefs.borderless ? 'transparent' : 'none');
+  root.dataset.frame = frame;
+  root.dataset.borderless = frame !== 'solid' ? 'true' : 'false';
   // Alto de renglón y cuerpo de la letra: los comparten las hojas, la hoja suelta y las versiones.
   Object.entries(textVars(prefs.textSize)).forEach(([name, value]) => root.style.setProperty(name, value));
   setSoundsEnabled(prefs.sounds);
@@ -123,6 +140,8 @@ export function usePrefs() {
     if (patch.lang) setLanguage(patch.lang);
     setPrefs((current) => {
       const next = { ...current, ...patch };
+      if (patch.frame !== undefined) next.borderless = patch.frame === 'transparent';
+      else if (patch.borderless !== undefined) next.frame = patch.borderless ? 'transparent' : 'none';
       try {
         localStorage.setItem(PREFS_KEY, JSON.stringify(next));
       } catch {
@@ -248,7 +267,7 @@ export function useSheets(filter: ListFilter, revision: number) {
     loadingMore.current = true;
     const id = request.current;
     api
-      .listSheets({ ...filter, beforeTs: last.modifiedAt, beforeId: last.id, limit: PAGE })
+      .listSheets({ ...filter, beforePinned: last.pinned, beforeTs: last.modifiedAt, beforeId: last.id, limit: PAGE })
       .then((rows) => {
         if (id !== request.current) return;
         setItems((previous) => [...previous, ...rows]);
@@ -261,27 +280,33 @@ export function useSheets(filter: ListFilter, revision: number) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, done]);
 
+  const loadingAll = useRef(false);
+
   /** Trae todas las hojas que faltan y devuelve la lista completa. */
   const loadAll = useCallback(async () => {
     if (done) return itemsRef.current;
+    if (loadingAll.current) return itemsRef.current;
+    loadingAll.current = true;
     const id = request.current;
-    const all = [...itemsRef.current];
-    for (;;) {
-      const last = all[all.length - 1];
+    try {
+      const last = itemsRef.current[itemsRef.current.length - 1];
       const rows = await api.listSheets({
         ...filter,
+        beforePinned: last?.pinned,
         beforeTs: last?.modifiedAt,
         beforeId: last?.id,
-        limit: 500,
       });
-      all.push(...rows);
-      if (rows.length < 500) break;
+      const all = [...itemsRef.current, ...rows];
+      if (id === request.current) {
+        setItems(all);
+        setDone(true);
+      }
+      return all;
+    } catch {
+      return itemsRef.current;
+    } finally {
+      loadingAll.current = false;
     }
-    if (id === request.current) {
-      setItems(all);
-      setDone(true);
-    }
-    return all;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, done]);
 

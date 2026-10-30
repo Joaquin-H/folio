@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type MutableRefObject,
@@ -17,21 +18,28 @@ import {
   ArrowLeft,
   Book,
   Check,
+  ChevronDown,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Compass,
   Ellipsis,
+  ExternalLink,
   Eye,
   EyeOff,
   FolderDown,
   History,
+  Layers,
   LoaderCircle,
   Lock,
   Mic,
   NotebookPen,
   PenLine,
+  Pin,
+  PinOff,
   Quote,
   Search,
   Sparkles,
@@ -61,10 +69,12 @@ import {
   caretAnchor,
   caretFromPoint,
   DRAFT,
+  getEditorCaret,
   offsetNear,
   placeCaret,
   placeCaretNear,
   readEditor,
+  setEditorCaret,
   toEditor,
   useWriter,
   type Writer,
@@ -95,8 +105,6 @@ const TURN_EDGE = { share: 0.12, min: 48, max: 96, gutter: 6 };
 const SWIPE = { distance: 55, slope: 2, follow: 0.15, reach: 6, back: 200 };
 /** Lo que es de un control: ahí un clic o un doble clic no son para la hoja. */
 const CONTROLS = 'button, a, input, label, .menu';
-/** Ancho de los botones de arriba del papel: los dos de la izquierda y los tres de la derecha, con su margen. */
-const BUTTONS = { left: 61, right: 100 };
 /** Al seleccionar arrastrando: espera en el borde antes de pasar de página y de nota. */
 const PAGE_HOLD = 450;
 const NOTE_HOLD = 950;
@@ -146,6 +154,7 @@ export interface NotebookTab {
   color: string;
   ink: string;
   icon?: ReactNode;
+  colorOnly?: boolean;
   /** Va agrupada a la derecha (secret-book, papelera). */
   atEnd?: boolean;
 }
@@ -176,8 +185,61 @@ function summaryOf(detail: SheetDetail): SheetSummary {
 
 function Tabs(props: { tabs: NotebookTab[]; view: View; onView: (view: View) => void }) {
   const t = useT();
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef<{ x: number; scrollLeft: number } | null>(null);
+  const isDraggingRef = useRef(false);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const container = tabsRef.current;
+    if (!container) return;
+    const isOverflow = container.scrollWidth > container.clientWidth;
+    if (isOverflow) {
+      dragStartRef.current = { x: e.clientX, scrollLeft: container.scrollLeft };
+      isDraggingRef.current = false;
+    } else if (!(e.target as Element).closest('button, a, input')) {
+      api.window.drag();
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStartRef.current || !tabsRef.current) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    if (Math.abs(dx) > 4) {
+      isDraggingRef.current = true;
+      tabsRef.current.scrollLeft = dragStartRef.current.scrollLeft - dx;
+    }
+  };
+
+  const handlePointerUp = () => {
+    dragStartRef.current = null;
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 50);
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const container = tabsRef.current;
+    if (!container) return;
+    if (container.scrollWidth > container.clientWidth) {
+      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      container.scrollLeft += delta;
+    }
+  };
+
   return (
-    <div className="tabs" role="tablist" aria-label={t('Filtrar el cuaderno por categoría')} data-tauri-drag-region data-tour="tabs">
+    <div
+      ref={tabsRef}
+      className="tabs"
+      role="tablist"
+      aria-label={t('Filtrar el cuaderno por categoría')}
+      data-tour="tabs"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onWheel={handleWheel}
+    >
       {props.tabs.map((tab) => {
         const active = sameView(tab.view, props.view);
         return (
@@ -188,12 +250,15 @@ function Tabs(props: { tabs: NotebookTab[]; view: View; onView: (view: View) => 
             aria-selected={active}
             aria-label={t('Ver {label}', { label: tab.label })}
             title={`${tab.label}, ${plural(tab.count, 'hoja', 'hojas')}`}
-            className={`tab${active ? ' active' : ''}${tab.atEnd ? ' at-end' : ''}${tab.icon ? ' icon-only' : ''}`}
+            className={`tab${active ? ' active' : ''}${tab.atEnd ? ' at-end' : ''}${tab.icon ? ' icon-only' : ''}${tab.colorOnly ? ' color-only' : ''}`}
             style={{ background: tab.color, color: tab.ink }}
             // Volver a tocar la solapa activa quita el filtro.
-            onClick={() => props.onView(active && tab.view.kind !== 'all' ? { kind: 'all' } : tab.view)}
+            onClick={() => {
+              if (isDraggingRef.current) return;
+              props.onView(active && tab.view.kind !== 'all' ? { kind: 'all' } : tab.view);
+            }}
           >
-            {tab.icon ?? <span className="tab-name">{tab.label}</span>}
+            {tab.icon ?? (tab.colorOnly ? null : <span className="tab-name">{tab.label}</span>)}
           </button>
         );
       })}
@@ -202,8 +267,15 @@ function Tabs(props: { tabs: NotebookTab[]; view: View; onView: (view: View) => 
 }
 
 function Footer(props: { geometry: Geometry; left?: ReactNode; right?: ReactNode }) {
+  const isSingle = props.geometry.perView === 1;
   return (
-    <footer className="page-foot" style={{ left: props.geometry.padLeft, right: PAD_RIGHT }}>
+    <footer
+      className="page-foot"
+      style={{
+        left: isSingle ? props.geometry.padLeft - 7 : props.geometry.padLeft,
+        right: isSingle ? 8 : PAD_RIGHT,
+      }}
+    >
       <span className="page-foot-main">{props.left}</span>
       <span>{props.right}</span>
     </footer>
@@ -233,9 +305,9 @@ function TurnZones(props: { geometry: Geometry; canGoOn: boolean }) {
   const { geometry: g } = props;
   return (
     <>
-      <div className="turn-zone prev" style={{ top: TOP, width: g.turnBack, height: g.bodyHeight }} aria-hidden="true" data-tour="turn-prev" />
+      <div className="turn-zone prev" style={{ top: 0, bottom: 0, width: g.turnBack }} aria-hidden="true" data-tour="turn-prev" />
       {props.canGoOn && (
-        <div className="turn-zone next" style={{ top: TOP, width: g.turnOn, height: g.bodyHeight }} aria-hidden="true" data-tour="turn-next" />
+        <div className="turn-zone next" style={{ top: 0, bottom: 0, width: g.turnOn }} aria-hidden="true" data-tour="turn-next" />
       )}
     </>
   );
@@ -248,45 +320,174 @@ function PageButtons(props: {
   actions: NotebookActions;
   onClose: () => void;
   onOpenMap?: () => void;
+  banner?: ReactNode;
+  allTabs?: NotebookTab[];
+  view?: View;
+  onView?: (view: View) => void;
+  hideTabs?: boolean;
 }) {
   const t = useT();
-  const showMapButton = Boolean(props.onOpenMap && (props.geometry.perView === 2 || props.geometry.pageWidth >= 420));
-  return (
-    <>
-      <div className="page-controls" style={{ left: props.geometry.padLeft - 7 }} data-tour="controls">
-        <button type="button" className="icon-button" onClick={props.onClose} aria-label={t('Cerrar el cuaderno')} title={t('Cerrar el cuaderno')}>
-          <Book size={15} />
-        </button>
+  const showMapButton = Boolean(props.onOpenMap && (props.geometry.perView === 2 || props.geometry.pageWidth >= 325));
+  const isSingle = props.geometry.perView === 1;
+  const newHint = hintOf('new');
+  const searchHint = hintOf('search');
+  const hideHint = hintOf('hide-window');
+
+  const currentTab = useMemo(() => {
+    if (!props.view || !props.allTabs) return undefined;
+    return props.allTabs.find((tab) => sameView(tab.view, props.view!));
+  }, [props.view, props.allTabs]);
+
+  const activeLabel = currentTab?.label ?? t('Todas');
+  const activeIcon = currentTab?.icon ? (
+    currentTab.icon
+  ) : currentTab?.color && currentTab.colorOnly ? (
+    <span className="cat-selector-dot" style={{ background: currentTab.color }} />
+  ) : (
+    <Layers size={14} />
+  );
+
+  const categoryMenuItems = useMemo<MenuItem[]>(() => {
+    if (!props.allTabs || !props.onView) return [];
+    return props.allTabs.map((tab, idx, arr) => {
+      const isFirstAtEnd = tab.atEnd && !arr[idx - 1]?.atEnd;
+      const isSelected = props.view ? sameView(tab.view, props.view) : false;
+      return {
+        label: tab.label,
+        icon: tab.icon ?? (tab.colorOnly ? <span className="dot" style={{ background: tab.color }} /> : <Layers size={14} />),
+        badge: tab.count > 0 ? tab.count : undefined,
+        checked: isSelected,
+        separator: isFirstAtEnd,
+        onSelect: () => props.onView?.(isSelected && tab.view.kind !== 'all' ? { kind: 'all' } : tab.view),
+      };
+    });
+  }, [props.allTabs, props.view, props.onView]);
+
+  const showCatLabel = Boolean(props.hideTabs && (props.geometry.perView === 2 || props.geometry.pageWidth >= 320));
+
+  const controls = (
+    <div className="page-controls" data-tour="controls">
+      <button type="button" className="icon-button" onClick={props.onClose} aria-label={t('Cerrar el cuaderno')} title={t('Cerrar el cuaderno')}>
+        <Book size={15} />
+      </button>
+      <button
+        type="button"
+        className="icon-button"
+        onClick={props.actions.onHide}
+        aria-label={t('Cerrar la ventana')}
+        title={
+          hideHint
+            ? `${t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')} (${hideHint})`
+            : t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')
+        }
+      >
+        <X size={15} />
+      </button>
+    </div>
+  );
+
+  const onBarMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 0 && !(e.target as Element).closest('button, input, textarea, a, [role="button"], [role="menuitem"], .menu-list')) {
+      api.window.drag();
+    }
+  };
+
+  const actions = (
+    <div
+      className="page-actions"
+      data-tour="actions"
+      data-tauri-drag-region
+      onMouseDown={onBarMouseDown}
+    >
+      <button
+        type="button"
+        className="icon-button"
+        data-tour="new"
+        onClick={props.actions.onCompose}
+        aria-label={t('Nueva hoja')}
+        title={newHint ? `${t('Nueva hoja')} (${newHint})` : t('Nueva hoja')}
+      >
+        <SquarePen size={15} />
+      </button>
+      <button
+        type="button"
+        className="icon-button"
+        data-tour="search"
+        onClick={props.actions.onSearch}
+        aria-label={t('Buscar y filtrar')}
+        title={searchHint ? `${t('Buscar y filtrar')} (${searchHint})` : t('Buscar y filtrar')}
+      >
+        <Search size={15} />
+      </button>
+      {categoryMenuItems.length > 0 && (
+        <Menu
+          label={t('Cambiar categoría o vista')}
+          heading={t('Categorías y vistas')}
+          align="right"
+          containerClassName="cat-dropdown"
+          className={`cat-selector-btn${showCatLabel ? ' with-label' : ' icon-only icon-button'}`}
+          items={categoryMenuItems}
+          trigger={
+            <>
+              {activeIcon}
+              {showCatLabel && (
+                <>
+                  <span className="cat-selector-name">{activeLabel}</span>
+                  <ChevronDown size={11} className="cat-selector-arrow" />
+                </>
+              )}
+            </>
+          }
+        />
+      )}
+      {showMapButton && (
         <button
           type="button"
           className="icon-button"
-          onClick={props.actions.onHide}
-          aria-label={t('Cerrar la ventana')}
-          title={t('Cerrar la ventana: Folio sigue en la bandeja, junto al reloj')}
+          onClick={props.onOpenMap}
+          aria-label={t('Mapa del cuaderno (Ctrl + M)')}
+          title={t('Mapa del cuaderno (Ctrl + M)')}
         >
-          <X size={15} />
+          <Compass size={15} />
         </button>
+      )}
+      <span className="page-actions-sep" aria-hidden="true" />
+      <Menu label={t('Menú')} className="icon-button" items={props.menu} trigger={<Ellipsis size={17} />} />
+    </div>
+  );
+
+  const leftEdge = isSingle ? 20 : 8;
+
+  if (isSingle) {
+    return (
+      <div
+        className="page-bar single"
+        style={{ left: leftEdge, right: 8 }}
+        data-tauri-drag-region
+        onMouseDown={onBarMouseDown}
+      >
+        {controls}
+        {props.banner}
+        {actions}
       </div>
-      <div className="page-actions" data-tour="actions">
-        <button type="button" className="icon-button" onClick={props.actions.onSearch} aria-label={t('Buscar y filtrar')} title={t('Buscar y filtrar')}>
-          <Search size={15} />
-        </button>
-        {showMapButton && (
-          <button
-            type="button"
-            className="icon-button"
-            onClick={props.onOpenMap}
-            aria-label={t('Mapa del cuaderno (Ctrl + M)')}
-            title={t('Mapa del cuaderno (Ctrl + M)')}
-          >
-            <Compass size={15} />
-          </button>
-        )}
-        <button type="button" className="icon-button" onClick={props.actions.onCompose} aria-label={t('Nueva hoja')} title={t('Nueva hoja')}>
-          <SquarePen size={15} />
-        </button>
-        <Menu label={t('Menú')} className="icon-button" items={props.menu} trigger={<Ellipsis size={17} />} />
+    );
+  }
+
+  return (
+    <>
+      <div
+        className="page-bar left"
+        style={{
+          left: leftEdge,
+          width: props.geometry.pageWidth - leftEdge - 8,
+        }}
+        data-tauri-drag-region
+        onMouseDown={onBarMouseDown}
+      >
+        {controls}
+        {props.banner}
       </div>
+      {actions}
     </>
   );
 }
@@ -305,7 +506,7 @@ const STATUS_TEXT = {
 /** Atajos que atiende el texto mientras se escribe en él. */
 const EDITOR_ACTIONS = ['finish', 'save', 'preview', 'write-next', 'write-prev', 'indent'] as const;
 /** Pasar de página y saltar a la primera o a la última, con el cuaderno cerrado o leyendo. */
-const TURN_ACTIONS = ['next', 'prev', 'first', 'last'] as const;
+const TURN_ACTIONS = ['next', 'prev', 'sheet-next', 'sheet-prev', 'first', 'last'] as const;
 /** Guardar con el teclado desde cualquier parte de la hoja que se escribe. */
 const SAVE_ACTIONS = ['finish', 'save'] as const;
 
@@ -341,6 +542,15 @@ function OpenSheet(props: {
   notesDir: string;
   /** Las hojas `.md` se leen con formato. */
   markdown: boolean;
+  hideHeader?: boolean;
+  centerTitle?: boolean;
+  revision?: number;
+
+  onPageTurn?: (delta: 1 | -1) => void;
+  /** Salta de hoja entera. */
+  onSheetTurn?: (delta: 1 | -1) => void;
+  canGoPrevSheet?: boolean;
+  canGoNextSheet?: boolean;
   /** La nota ocupa tantas páginas con ese alto de renglón (si el renglón cambió, la cuenta es otra). */
   onPages: (pages: number, line: number) => void;
   /** El cursor quedó en esa página de la nota: la vista tiene que mostrarla. */
@@ -355,9 +565,14 @@ function OpenSheet(props: {
   actions: NotebookActions;
   menuBefore: MenuItem[];
   menuAfter: MenuItem[];
+  navItems?: MenuItem[];
   onOpenMap?: () => void;
   noteFormat?: 'txt' | 'md';
   onSavedNote?: (detail: SheetDetail) => void;
+  allTabs?: NotebookTab[];
+  view?: View;
+  onView?: (view: View) => void;
+  hideTabs?: boolean;
 }) {
   const { sheet, active, categories, geometry: g, page, pageCount, onPages, onCaretPage, writer } = props;
   const t = useT();
@@ -367,7 +582,7 @@ function OpenSheet(props: {
   const isDraft = sheet.id === DRAFT;
   const detail = useSheetDetail(sheet, !isDraft);
   const [showVersions, setShowVersions] = useState(false);
-  const { categoryItems, moreItems, error, restore, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
+  const { categoryItems, secretItem, trashItem, actionItems, error, restore, togglePinned, tearOff, dialogs } = useSheetMenus(sheet, categories, isDraft ? props.onDraftCategory : undefined);
   const [head, headSize] = useSize<HTMLElement>();
   const flow = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLPreElement>(null);
@@ -431,7 +646,8 @@ function OpenSheet(props: {
   // Papelera y secret-book se distinguen a simple vista del resto del cuaderno.
   const mode = sheet.hidden ? 'trash' : sheet.secret ? 'secret' : '';
   // El encabezado ocupa renglones enteros para que el texto arranque sobre el rayado.
-  const spacer = Math.ceil(headSize.height / g.line) * g.line;
+  const maxSpacer = Math.max(0, g.bodyHeight - g.line * 2);
+  const spacer = Math.min(maxSpacer, Math.ceil(headSize.height / g.line) * g.line);
 
   /** Por qué esta hoja no se puede escribir desde Book, si es el caso. */
   const locked = sheet.hidden
@@ -486,7 +702,7 @@ function OpenSheet(props: {
   }, [g.pageWidth, g.column, g.bodyHeight, g.line, spacer, onCaretPage]);
 
   // Al empezar a escribir, el editor recibe el texto y el cursor; después manda él.
-  const { attach, text: currentText } = writer;
+  const { attach, text: currentText, syncExternal } = writer;
   useLayoutEffect(() => {
     const node = editor.current;
     if (!isWriting || !node) return;
@@ -496,6 +712,62 @@ function OpenSheet(props: {
     caretAt.current = 'end';
     return () => attach(null);
   }, [isWriting, attach, currentText]);
+
+  useEffect(() => {
+    if (!detail || detail.id !== sheet.id) return;
+    if (!isWriting) {
+      syncExternal(sheet.id, detail.content, detail.hash ?? undefined);
+    }
+  }, [detail, sheet.id, isWriting, syncExternal]);
+
+  // Si llega un recorte a esta hoja mientras se está editando, se agrega al final sin perder
+  // lo que se escribió ni el cursor ni el foco.
+  useEffect(() => {
+    if (!isWriting) return;
+    const stopClip = api.onClippingSaved(async (payload) => {
+      if (!payload.sheetId || payload.sheetId !== sheet.id) return;
+      try {
+        const fresh = await api.getSheet(sheet.id);
+        if (!fresh) return;
+        const node = editor.current;
+        if (!node) return;
+        const currentVal = readEditor(node);
+        const saved = writer.getSavedText(sheet.id) ?? '';
+        let added = '';
+        if (saved && fresh.content.startsWith(saved)) {
+          added = fresh.content.slice(saved.length);
+        } else {
+          const linesFresh = fresh.content.split('\n');
+          const linesSaved = saved.split('\n');
+          if (linesFresh.length > linesSaved.length) {
+            added = '\n' + linesFresh.slice(linesSaved.length).join('\n');
+          } else {
+            added = '\n\n' + fresh.content;
+          }
+        }
+        if (!added.trim()) return;
+
+        const caret = getEditorCaret(node);
+        const hasFocus = document.activeElement === node;
+        const cleanAdded = added.replace(/^\n+/, '');
+        const updated = currentVal.trim()
+          ? `${currentVal.replace(/\n+$/, '')}\n\n${cleanAdded}`
+          : cleanAdded;
+
+        node.textContent = toEditor(updated);
+        writer.appendExternal(sheet.id, updated, fresh.content, fresh.hash ?? undefined);
+
+        if (caret !== null) {
+          setEditorCaret(node, caret);
+        } else if (hasFocus) {
+          node.focus({ preventScroll: true });
+        }
+      } catch (err) {
+        console.error('Error handling clipping during edit:', err);
+      }
+    });
+    return stopClip;
+  }, [isWriting, sheet.id, writer]);
 
   useLayoutEffect(() => {
     if (active) measure();
@@ -559,11 +831,18 @@ function OpenSheet(props: {
   );
 
   // Enter entra a escribir (y F2, el atajo de siempre para "editar esto"); Esc sale.
+  // Ctrl+T (o el atajo elegido para 'tear-off') arranca la hoja en su propia ventana flotante.
   useEffect(() => {
-    if (!active || isWriting) return;
+    if (!active) return;
     const onKey = (event: KeyboardEvent) => {
+      if (document.querySelector('.backdrop')) return;
+      if (!isDraft && matches(event, 'tear-off')) {
+        event.preventDefault();
+        void (isWriting ? writer.finish() : Promise.resolve()).then(() => tearOff());
+        return;
+      }
       // Enter sobre un botón o un campo es de ese control, no de la hoja.
-      if (document.querySelector('.backdrop') || !matches(event, 'write') || belongsToTarget(event)) return;
+      if (isWriting || !matches(event, 'write') || belongsToTarget(event)) return;
       event.preventDefault();
       if (sheet.source === 'notepad') {
         void saveNotepadToFolio();
@@ -573,7 +852,7 @@ function OpenSheet(props: {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [active, isWriting, startWriting, sheet.source, saveNotepadToFolio]);
+  }, [active, isDraft, isWriting, writer, tearOff, startWriting, sheet.source, saveNotepadToFolio]);
 
   const onReadDoubleClick = (event: MouseEvent<HTMLPreElement>) => {
     // El cursor queda al final de la palabra que se tocó, sin seleccionarla: así lo
@@ -784,49 +1063,193 @@ function OpenSheet(props: {
   };
 
   const sides: Side[] = g.perView === 2 ? ['left', 'right'] : ['only'];
+  const sheetColor = category?.color;
   const finishHint = hintOf('finish');
   const saveHint = hintOf('save');
+  const tearHint = hintOf('tear-off');
   const writeItem: MenuItem = isWriting
-    ? { label: t('Guardar y terminar de escribir'), icon: <Check size={14} />, hint: finishHint, separator: true, onSelect: () => void writer.finish() }
+    ? { label: t('Guardar y terminar de escribir'), icon: <Check size={14} />, hint: finishHint, onSelect: () => void writer.finish() }
     : sheet.source === 'notepad'
       ? {
           label: t('Guardar en Folio para editar'),
           icon: <FolderDown size={14} />,
           hint: hintOf('write'),
-          separator: true,
           onSelect: () => void saveNotepadToFolio(),
         }
-      : { label: t('Escribir en esta hoja'), icon: <PenLine size={14} />, hint: hintOf('write'), separator: true, onSelect: () => startWriting('end') };
-  const sheetItems: MenuItem[] = isDraft
-    ? [writeItem]
-    : [writeItem, ...moreItems.map((item, index) => (index === 0 ? { ...item, separator: true } : item))];
+      : { label: t('Escribir en esta hoja'), icon: <PenLine size={14} />, hint: hintOf('write'), onSelect: () => startWriting('end') };
+
+  const secondaryItems: MenuItem[] = [
+    ...(props.navItems ?? []),
+    writeItem,
+    ...actionItems,
+  ];
+
+  const sheetMenu: MenuItem[] = isDraft
+    ? [
+        ...props.menuBefore,
+        writeItem,
+        ...(props.navItems && props.navItems.length > 0
+          ? [
+              {
+                type: 'collapsible' as const,
+                label: t('Más opciones…'),
+                expandedLabel: t('Menos opciones…'),
+                separator: true,
+                items: props.navItems,
+              },
+            ]
+          : []),
+        ...props.menuAfter,
+      ]
+    : [
+        ...props.menuBefore,
+        secretItem,
+        trashItem,
+        {
+          type: 'collapsible' as const,
+          label: t('Más opciones…'),
+          expandedLabel: t('Menos opciones…'),
+          separator: true,
+          items: secondaryItems,
+        },
+        ...props.menuAfter,
+      ];
+
   const draftUnsaved = isDraft && writing?.status === 'saved';
   // Dentro de la nota, las flechas del modo escritura pasan de página sin salir de ella.
   const canTurnBack = page > 0;
   const canTurnOn = page + g.perView < pageCount;
-  // El cartel de arriba va centrado en el hueco que dejan los botones del papel. Con un
-  // cuaderno chico ese hueco es angosto: el cartel dice lo mismo con menos palabras.
-  const bandLeft = g.padLeft - 7 + BUTTONS.left + 8;
-  const room = g.pageWidth - bandLeft - (g.perView === 1 ? BUTTONS.right + 8 : 0);
-  const cartel = { left: bandLeft + room / 2 };
-  const snug = room < 340;
-  const tight = room < 250;
+  // Con un cuaderno chico el espacio para el cartel es angosto: el cartel dice lo mismo con menos palabras.
+  const leftControlsRight = (g.perView === 1 ? 38 : 8) + 64 + 8;
+  const showCatLabel = Boolean(props.hideTabs && (g.perView === 2 || g.pageWidth >= 320));
+  const catWidth = props.allTabs && props.allTabs.length > 0 ? (showCatLabel ? 86 : 32) : 0;
+  const rightActionsWidth = (g.perView === 1 ? (g.pageWidth >= 325 ? 136 : 104) + catWidth + 8 : 8);
+  const availableRoom = g.pageWidth - leftControlsRight - rightActionsWidth;
+  const snug = availableRoom < 340;
+  const tight = availableRoom < 250;
+  const narrow = availableRoom < 170;
+  const ultraNarrow = availableRoom < 120;
+
+  const banner =
+    writing && writing.status !== 'conflict' ? (
+      <div
+        className={`page-mode edit-banner ${writing.isNew ? 'new' : 'write'}`}
+        title={writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
+        aria-label={writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
+      >
+        {writing.isNew ? <SquarePen size={12} /> : <PenLine size={12} />}
+        <span className={narrow ? 'banner-text sr-only' : 'banner-text'}>
+          {writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
+        </span>
+        {markdown && (
+          <button
+            type="button"
+            className={`banner-tool preview-btn${livePreview ? ' active' : ''}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={toggleLivePreview}
+            aria-label={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
+            title={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
+          >
+            {livePreview ? <EyeOff size={13} /> : <Eye size={13} />}
+          </button>
+        )}
+        <button
+          type="button"
+          className="banner-tool dict-btn"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            if (livePreview) setLivePreview(false);
+            editor.current?.focus();
+            void api.startDictation().catch(() => {});
+          }}
+          aria-label={dictationLabel}
+          title={dictationLabel}
+        >
+          <Mic size={13} />
+        </button>
+        {/* El atajo va escrito en el botón: si no se ve, no se descubre. */}
+        <button
+          type="button"
+          onClick={() => void writer.finish()}
+          aria-label={t('Guardar y terminar de escribir')}
+          title={
+            finishHint && saveHint
+              ? t('Guardar y terminar de escribir ({finish}). Con {save} se guarda y se sigue escribiendo.', { finish: describe('finish'), save: saveHint })
+              : finishHint
+                ? t('Guardar y terminar de escribir ({finish}).', { finish: describe('finish') })
+                : saveHint
+                  ? t('Guardar y terminar de escribir. Con {save} se guarda y se sigue escribiendo.', { save: saveHint })
+                  : t('Guardar y terminar de escribir.')
+          }
+        >
+          {ultraNarrow ? <Check size={12} /> : t('Listo')}
+          {!tight && finishHint && <kbd>{finishHint}</kbd>}
+        </button>
+      </div>
+    ) : mode && !writing ? (
+      <div className={`page-mode ${mode}`}>
+        {mode === 'trash' ? <Trash2 size={12} /> : <Lock size={12} />}
+        <span className={narrow ? 'banner-text sr-only' : 'banner-text'}>
+          {mode === 'trash' ? (tight ? t('Papelera') : t('En la papelera')) : t('Secret-book')}
+        </span>
+        {mode === 'trash' && (
+          <button type="button" onClick={restore} aria-label={t('Recuperar')} title={t('Sacar esta hoja de la papelera')}>
+            {tight ? <Undo2 size={12} /> : t('Recuperar')}
+          </button>
+        )}
+        {props.onBack && (
+          <button
+            type="button"
+            onClick={props.onBack}
+            aria-label={t('Volver al cuaderno')}
+            title={hintOf('back') ? t('Volver a todas las hojas ({hint})', { hint: hintOf('back') }) : t('Volver a todas las hojas')}
+          >
+            <ArrowLeft size={12} />
+            {tight ? null : snug && mode === 'trash' ? t('Volver') : t('Volver al cuaderno')}
+          </button>
+        )}
+      </div>
+    ) : writing?.status === 'conflict' ? (
+      <div className="page-mode conflict" role="alert">
+        <TriangleAlert size={12} />
+        <span className={narrow ? 'banner-text sr-only' : 'banner-text'}>
+          {snug ? t('Cambió afuera') : t('El archivo cambió fuera de Folio')}
+        </span>
+        <button type="button" onClick={() => writer.resolve('mine')} title={t('Guardar lo que escribiste: lo de afuera queda como versión anterior')}>
+          {tight ? t('Lo mío') : t('Guardar lo mío')}
+        </button>
+        <button
+          type="button"
+          onClick={() => writer.resolve('theirs')}
+          title={t('Dejar el archivo como quedó afuera: lo que escribiste pasa a una hoja nueva, no se pierde')}
+        >
+          {tight ? t('El de afuera') : t('Quedarme con el de afuera')}
+        </button>
+      </div>
+    ) : null;
+
+  const isCompactHeader = g.pageWidth < 430;
+  const isCompactActions = g.pageWidth < 460 || isCompactHeader;
+  const sourceText = isDraft ? t('Hoja nueva') : sourceLabel(sheet);
+  const versionText = plural(sheet.versionCount, 'versión anterior', 'versiones anteriores');
+  const dateText = relative ? `${heading.title}, ${heading.subtitle}` : `${heading.title} ${heading.subtitle}`;
 
   return (
     <>
       {active &&
         sides.map((side, index) => (
           <div
-            className={`page ${side} ${mode}${writing ? (writing.isNew ? ' writing new' : ' writing') : ''}`}
+            className={`page ${side} ${mode}${sheetColor ? ' categorized' : ''}${writing ? (writing.isNew ? ' writing new' : ' writing') : ''}`}
             key={`page-${index}`}
+            style={sheetColor ? ({ '--sheet-cat-color': sheetColor } as CSSProperties) : undefined}
             onDoubleClick={isWriting ? undefined : onPaperDoubleClick}
           >
             {isWriting && <div className="write-bar" />}
             <div className="page-lines" style={{ top: TOP, height: g.bodyHeight }} />
-            {index === 0 && (
+            {index === 0 && !props.hideHeader && (
               <header
                 ref={head}
-                className={`page-head${props.fading ? ' fading' : ''}`}
+                className={`page-head page-header${props.fading ? ' fading' : ''}${props.centerTitle ? ' centered-title' : ''}${isCompactHeader ? ' compact' : ''}`}
                 style={{
                   top: TOP,
                   paddingLeft: g.padLeft,
@@ -834,214 +1257,197 @@ function OpenSheet(props: {
                   visibility: page === 0 ? 'visible' : 'hidden',
                 }}
               >
-                <div className="page-date">
-                  <span>{relative ? `${heading.title}, ${heading.subtitle}` : `${heading.title} ${heading.subtitle}`}</span>
-                  <time dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
+                {/* Línea 1: Título (protagonista, editable al hacer clic) */}
+                <div className="page-title-row">
+                  {writing && writing.title !== null ? (
+                    <label className="page-title editable" title={t('Cambiar el título de la hoja')}>
+                      <input
+                        value={writing.title}
+                        maxLength={80}
+                        spellCheck={false}
+                        aria-label={t('Título de la hoja')}
+                        placeholder={titleFromContent(text) || t('Sin título')}
+                        onChange={(event) => writer.rename(event.target.value)}
+                        onKeyDown={(event) => {
+                          // Los atajos de guardar valen igual acá que en el texto.
+                          const action = which(event.nativeEvent, ['finish', 'save']);
+                          if (action === 'finish') {
+                            event.preventDefault();
+                            void writer.finish();
+                          } else if (action === 'save') {
+                            event.preventDefault();
+                            void writer.flush();
+                          } else if (event.key === 'Enter' && editor.current) {
+                            placeCaret(editor.current, 'end');
+                          }
+                        }}
+                      />
+                      <span>{extensionOf(sheet.title) || (props.noteFormat === 'md' ? '.md' : '.txt')}</span>
+                    </label>
+                  ) : (
+                    // Con encabezado, el título es el de la nota; el nombre del archivo queda a mano.
+                    <h2
+                      className="page-title"
+                      title={front?.title ? sheet.title : t('Cambiar el título de la hoja')}
+                      onClick={isWriting ? undefined : () => startWriting(0, true)}
+                    >
+                      {front?.title || sheet.title}
+                    </h2>
+                  )}
                 </div>
-                {writing && writing.title !== null ? (
-                  <label className="page-title editable" title={t('Cambiar el título de la hoja')}>
-                    <input
-                      value={writing.title}
-                      maxLength={80}
-                      spellCheck={false}
-                      aria-label={t('Título de la hoja')}
-                      placeholder={titleFromContent(text) || t('Sin título')}
-                      onChange={(event) => writer.rename(event.target.value)}
-                      onKeyDown={(event) => {
-                        // Los atajos de guardar valen igual acá que en el texto.
-                        const action = which(event.nativeEvent, ['finish', 'save']);
-                        if (action === 'finish') {
-                          event.preventDefault();
-                          void writer.finish();
-                        } else if (action === 'save') {
-                          event.preventDefault();
-                          void writer.flush();
-                        } else if (event.key === 'Enter' && editor.current) {
-                          placeCaret(editor.current, 'end');
-                        }
-                      }}
-                    />
-                    <span>{extensionOf(sheet.title) || (props.noteFormat === 'md' ? '.md' : '.txt')}</span>
-                  </label>
-                ) : (
-                  // Con encabezado, el título es el de la nota; el nombre del archivo queda a mano.
-                  <h2 className="page-title" title={front?.title ? sheet.title : undefined}>
-                    {front?.title || sheet.title}
-                  </h2>
-                )}
-                <div className="page-meta">
-                  <span className="page-source">
-                    <Icon size={13} />
-                    {isDraft ? t('Hoja nueva') : sourceLabel(sheet)}
-                  </span>
+
+                {/* Línea 2: Fecha · Guardado · Etiquetas */}
+                <div className="page-date page-meta-row" data-tauri-drag-region>
+                  <div className="page-meta" data-tauri-drag-region>
+                    <span className="page-date-main meta-item" data-tauri-drag-region title={`${dateText} ${timeOf(sheet.modifiedAt)}`}>
+                      <span data-tauri-drag-region>{dateText}</span>
+                      <time data-tauri-drag-region dateTime={new Date(sheet.modifiedAt).toISOString()}>{timeOf(sheet.modifiedAt)}</time>
+                    </span>
+                    <span className="meta-sep" aria-hidden="true">·</span>
+                    <span className="page-source meta-item" title={sourceText}>
+                      <Icon size={12} />
+                      <span className="meta-text">{sourceText}</span>
+                    </span>
+                    {front?.source && (
+                      <>
+                        <span className="meta-sep" aria-hidden="true">·</span>
+                        <span className="page-tag source meta-item" title={t('Fuente: {source}', { source: front.source })}>
+                          {AI_SOURCE.test(front.source) ? <Sparkles size={11} /> : <Quote size={11} />}
+                          <span className="meta-text">{front.source}</span>
+                        </span>
+                      </>
+                    )}
+                    {front?.tags.map((tag) => (
+                      <span key={tag} className="meta-tag-wrap" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <span className="meta-sep" aria-hidden="true">·</span>
+                        <span className="page-tag tag meta-item" title={t('Etiqueta: {tag}', { tag })}>
+                          <span className="meta-text">{tag}</span>
+                        </span>
+                      </span>
+                    ))}
+                    <SheetBadges sheet={sheet} />
+                  </div>
+                </div>
+
+                {/* Línea 3: Acciones (Categoría, Fijar, Arrancar, Versiones) */}
+                <div className={`page-actions-row${isCompactActions ? ' compact icon-only' : ''}`}>
+                  <Menu
+                    label={t('Cambiar la categoría de esta hoja')}
+                    heading={t('Categoría de esta hoja')}
+                    align="left"
+                    anchorClassName="cat-picker"
+                    popoverClassName="cat-pop"
+                    className={`chip meta-btn category-chip${category ? '' : ' unset'}`}
+                    items={categoryItems}
+                    trigger={
+                      <span title={category ? category.name : t('Sin categoría')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {category ? (
+                          <span className="dot" style={{ background: category.color }} />
+                        ) : (
+                          <span className="dot unset-dot" />
+                        )}
+                        <span className="meta-text">{category ? category.name : t('Sin categoría')}</span>
+                        <ChevronDown size={11} className="cat-arrow" style={{ opacity: 0.6 }} />
+                      </span>
+                    }
+                  />
                   {sheet.source === 'notepad' && (
                     <button
                       type="button"
-                      className="chip action-chip"
+                      className="chip meta-btn action-chip"
                       onClick={() => void saveNotepadToFolio()}
                       title={t('Guardar esta nota en Folio para poder escribirla')}
                       aria-label={t('Guardar en Folio')}
                     >
                       <FolderDown size={12} />
-                      {t('Guardar en Folio')}
+                      <span className="meta-text">{t('Guardar en Folio')}</span>
                     </button>
                   )}
-                  <Menu
-                    label={t('Cambiar la categoría de esta hoja')}
-                    heading={t('Categoría de esta hoja')}
-                    align="left"
-                    className={`chip${category ? '' : ' unset'}`}
-                    items={categoryItems}
-                    trigger={
-                      category ? (
-                        <>
-                          <span className="dot" style={{ background: category.color }} />
-                          {category.name}
-                        </>
-                      ) : (
-                        t('Sin categoría')
-                      )
-                    }
-                  />
+                  {!isDraft && (
+                    <>
+                      <button
+                        type="button"
+                        className={`chip meta-btn pin-btn${sheet.pinned ? ' active' : ''}`}
+                        onClick={togglePinned}
+                        aria-label={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                        title={sheet.pinned ? t('Desfijar esta hoja') : t('Fijar esta hoja')}
+                      >
+                        {sheet.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+                        <span className="meta-text">{sheet.pinned ? t('Fijada') : t('Fijar')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="chip meta-btn tear-btn"
+                        onClick={() => void (isWriting ? writer.finish() : Promise.resolve()).then(() => tearOff())}
+                        aria-label={t('Arrancar hoja')}
+                        title={tearHint ? `${t('Arrancar hoja')} (${tearHint})` : t('Arrancar hoja')}
+                      >
+                        <ExternalLink size={12} />
+                        <span className="meta-text">{t('Arrancar')}</span>
+                      </button>
+                    </>
+                  )}
                   {sheet.versionCount > 0 && (
-                    <button type="button" className="chip" onClick={() => setShowVersions(true)}>
+                    <button
+                      type="button"
+                      className="chip meta-btn versions-btn"
+                      onClick={() => setShowVersions(true)}
+                      title={versionText}
+                      aria-label={versionText}
+                    >
                       <History size={12} />
-                      {plural(sheet.versionCount, 'versión anterior', 'versiones anteriores')}
+                      <span className="meta-text">{versionText}</span>
                     </button>
                   )}
-                  {front?.source && (
-                    <span className="page-tag source" title={t('Fuente: {source}', { source: front.source })}>
-                      {AI_SOURCE.test(front.source) ? <Sparkles size={11} /> : <Quote size={11} />}
-                      {front.source}
-                    </span>
-                  )}
-                  {front?.tags.map((tag) => (
-                    <span key={tag} className="page-tag tag" title={t('Etiqueta: {tag}', { tag })}>
-                      {tag}
-                    </span>
-                  ))}
-                  <SheetBadges sheet={sheet} />
                 </div>
                 {error && <p className="page-error">{error}</p>}
               </header>
-            )}
-            {index === 0 && writing && writing.status !== 'conflict' && (
-              <div className={`page-mode edit-banner ${writing.isNew ? 'new' : 'write'}`} style={cartel}>
-                {writing.isNew ? <SquarePen size={12} /> : <PenLine size={12} />}
-                {writing.isNew ? t('Hoja nueva') : t('Escribiendo')}
-                {markdown && (
-                  <button
-                    type="button"
-                    className={`banner-tool preview-btn${livePreview ? ' active' : ''}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={toggleLivePreview}
-                    aria-label={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
-                    title={livePreview ? t('Volver a escribir (Ctrl + P)') : t('Previsualizar (Ctrl + P)')}
-                  >
-                    {livePreview ? <EyeOff size={13} /> : <Eye size={13} />}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="banner-tool dict-btn"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    if (livePreview) setLivePreview(false);
-                    editor.current?.focus();
-                    void api.startDictation().catch(() => {});
-                  }}
-                  aria-label={dictationLabel}
-                  title={dictationLabel}
-                >
-                  <Mic size={13} />
-                </button>
-                {/* El atajo va escrito en el botón: si no se ve, no se descubre. */}
-                <button
-                  type="button"
-                  onClick={() => void writer.finish()}
-                  title={
-                    finishHint && saveHint
-                      ? t('Guardar y terminar de escribir ({finish}). Con {save} se guarda y se sigue escribiendo.', { finish: describe('finish'), save: saveHint })
-                      : finishHint
-                        ? t('Guardar y terminar de escribir ({finish}).', { finish: describe('finish') })
-                        : saveHint
-                          ? t('Guardar y terminar de escribir. Con {save} se guarda y se sigue escribiendo.', { save: saveHint })
-                          : t('Guardar y terminar de escribir.')
-                  }
-                >
-                  {t('Listo')}{!tight && finishHint && <kbd>{finishHint}</kbd>}
-                </button>
-              </div>
-            )}
-            {index === 0 && mode && !writing && (
-              <div className={`page-mode ${mode}`} style={cartel}>
-                {mode === 'trash' ? <Trash2 size={12} /> : <Lock size={12} />}
-                {mode === 'trash' ? (tight ? t('Papelera') : t('En la papelera')) : t('Secret-book')}
-                {mode === 'trash' && (
-                  <button type="button" onClick={restore} aria-label={t('Recuperar')} title={t('Sacar esta hoja de la papelera')}>
-                    {tight ? <Undo2 size={12} /> : t('Recuperar')}
-                  </button>
-                )}
-                {props.onBack && (
-                  <button
-                    type="button"
-                    onClick={props.onBack}
-                    aria-label={t('Volver al cuaderno')}
-                    title={hintOf('back') ? t('Volver a todas las hojas ({hint})', { hint: hintOf('back') }) : t('Volver a todas las hojas')}
-                  >
-                    <ArrowLeft size={12} />
-                    {tight ? null : snug && mode === 'trash' ? t('Volver') : t('Volver al cuaderno')}
-                  </button>
-                )}
-              </div>
-            )}
-            {index === 0 && writing?.status === 'conflict' && (
-              <div className="page-mode conflict" role="alert" style={cartel}>
-                <TriangleAlert size={12} />
-                {snug ? t('Cambió afuera') : t('El archivo cambió fuera de Folio')}
-                <button type="button" onClick={() => writer.resolve('mine')} title={t('Guardar lo que escribiste: lo de afuera queda como versión anterior')}>
-                  {tight ? t('Lo mío') : t('Guardar lo mío')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => writer.resolve('theirs')}
-                  title={t('Dejar el archivo como quedó afuera: lo que escribiste pasa a una hoja nueva, no se pierde')}
-                >
-                  {tight ? t('El de afuera') : t('Quedarme con el de afuera')}
-                </button>
-              </div>
             )}
             <Footer
               geometry={g}
               left={
                 index === 0 && (
                   <>
-                    {props.onOpenMap ? (
+                    <div className="sheet-nav-group">
                       <button
                         type="button"
-                        className="counter-btn"
-                        onClick={props.onOpenMap}
-                        aria-label={t('Mapa del cuaderno (Ctrl + M)')}
-                        title={t('Mapa del cuaderno (Ctrl + M)')}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: 0,
-                          margin: 0,
-                          font: 'inherit',
-                          color: 'inherit',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
+                        className="nav-btn prev-sheet"
+                        onClick={() => props.onSheetTurn?.(-1)}
+                        disabled={!props.canGoPrevSheet}
+                        aria-label={t('Hoja anterior')}
+                        title={hintOf('sheet-prev') ? t('Hoja anterior ({hint})', { hint: hintOf('sheet-prev') }) : t('Hoja anterior')}
                       >
-                        {props.counter}
-                        <Compass size={11} style={{ opacity: 0.6 }} />
+                        <ChevronsLeft size={13} />
                       </button>
-                    ) : (
-                      props.counter
-                    )}
+                      {props.onOpenMap ? (
+                        <button
+                          type="button"
+                          className="counter-btn sheet-indicator-badge"
+                          onClick={props.onOpenMap}
+                          aria-label={t('Mapa del cuaderno (Ctrl + M)')}
+                          title={t('Mapa del cuaderno (Ctrl + M)')}
+                        >
+                          <span className="sheet-indicator-accent" aria-hidden="true" />
+                          <span className="sheet-indicator-text">{props.counter}</span>
+                          <Compass size={11} className="sheet-map-icon" style={{ opacity: 0.6 }} />
+                        </button>
+                      ) : (
+                        <span className="sheet-indicator-badge">
+                          <span className="sheet-indicator-accent" aria-hidden="true" />
+                          <span className="sheet-indicator-text">{props.counter}</span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="nav-btn next-sheet"
+                        onClick={() => props.onSheetTurn?.(1)}
+                        disabled={!props.canGoNextSheet}
+                        aria-label={t('Hoja siguiente')}
+                        title={hintOf('sheet-next') ? t('Hoja siguiente ({hint})', { hint: hintOf('sheet-next') }) : t('Hoja siguiente')}
+                      >
+                        <ChevronsRight size={13} />
+                      </button>
+                    </div>
                     {writing && (
                       <>
                         <span className={`write-status ${writing.status}`} title={writing.message}>
@@ -1053,7 +1459,43 @@ function OpenSheet(props: {
                   </>
                 )
               }
-              right={pageCount > 1 && page + index < pageCount && t('{page} de {total}', { page: page + index + 1, total: pageCount })}
+              right={
+                pageCount > 1 && page + index < pageCount && (
+                  <div className="page-nav-group">
+                    <button
+                      type="button"
+                      className="nav-btn prev-page"
+                      onClick={() => (isWriting ? props.onTurn(-1) : props.onPageTurn?.(-1))}
+                      disabled={!canTurnBack}
+                      aria-label={t('Página anterior')}
+                      title={
+                        hintOf(isWriting ? 'write-prev' : 'prev')
+                          ? t('Página anterior ({hint})', { hint: hintOf(isWriting ? 'write-prev' : 'prev') })
+                          : t('Página anterior')
+                      }
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <span className="page-nav-counter">
+                      {t('{page} de {total}', { page: page + index + 1, total: pageCount })}
+                    </span>
+                    <button
+                      type="button"
+                      className="nav-btn next-page"
+                      onClick={() => (isWriting ? props.onTurn(1) : props.onPageTurn?.(1))}
+                      disabled={!canTurnOn}
+                      aria-label={t('Página siguiente')}
+                      title={
+                        hintOf(isWriting ? 'write-next' : 'next')
+                          ? t('Página siguiente ({hint})', { hint: hintOf(isWriting ? 'write-next' : 'next') })
+                          : t('Página siguiente')
+                      }
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                )
+              }
             />
           </div>
         ))}
@@ -1147,10 +1589,15 @@ function OpenSheet(props: {
         <PageButtons
           key="buttons"
           geometry={g}
-          menu={[...props.menuBefore, ...sheetItems, ...props.menuAfter]}
+          menu={sheetMenu}
           actions={props.actions}
           onClose={props.onClose}
           onOpenMap={props.onOpenMap}
+          banner={banner}
+          allTabs={props.allTabs}
+          view={props.view}
+          onView={props.onView}
+          hideTabs={props.hideTabs}
         />
       )}
       <Presence show={showVersions}>
@@ -1170,6 +1617,10 @@ function EmptyLeaves(props: {
   onClose: () => void;
   onOpenMap?: () => void;
   children: ReactNode;
+  allTabs?: NotebookTab[];
+  view?: View;
+  onView?: (view: View) => void;
+  hideTabs?: boolean;
 }) {
   const sides: Side[] = props.geometry.perView === 2 ? ['left', 'right'] : ['only'];
   return (
@@ -1180,7 +1631,17 @@ function EmptyLeaves(props: {
           {index === 0 && <Footer geometry={props.geometry} left={<Chips chips={props.chips} />} />}
         </div>
       ))}
-      <PageButtons geometry={props.geometry} menu={props.menu} actions={props.actions} onClose={props.onClose} onOpenMap={props.onOpenMap} />
+      <PageButtons
+        geometry={props.geometry}
+        menu={props.menu}
+        actions={props.actions}
+        onClose={props.onClose}
+        onOpenMap={props.onOpenMap}
+        allTabs={props.allTabs}
+        view={props.view}
+        onView={props.onView}
+        hideTabs={props.hideTabs}
+      />
     </>
   );
 }
@@ -1224,6 +1685,8 @@ export function Notebook(props: {
   chips: FilterChip[];
   /** Solapas de filtro; `null` si el usuario las ocultó. */
   tabs: NotebookTab[] | null;
+  allTabs?: NotebookTab[];
+  hideTabs?: boolean;
   view: View;
   onView: (view: View) => void;
   actions: NotebookActions;
@@ -1232,6 +1695,14 @@ export function Notebook(props: {
   notesDir: string;
   /** Las hojas `.md` se leen con formato. */
   markdown: boolean;
+  hideHeader?: boolean;
+  centerTitle?: boolean;
+
+  onPageTurn?: (delta: 1 | -1) => void;
+  /** Salta de hoja entera. */
+  onSheetTurn?: (delta: 1 | -1) => void;
+  canGoPrevSheet?: boolean;
+  canGoNextSheet?: boolean;
   /** En modo tamaño, se agarró un borde o una esquina del cuaderno. */
   onStretch: (grip: Grip, event: ReactPointerEvent<HTMLElement>) => void;
   /** Acá el cuaderno deja cómo guardar lo que se esté escribiendo, para antes de cerrar. */
@@ -1271,9 +1742,16 @@ export function Notebook(props: {
     };
   }, [size.width, size.height, perView, spread, textSize]);
 
-  const [pos, setPos] = useState({ sheet: 0, page: 0 });
+  interface Pos { sheet: number; page: number }
+  const [pos, setPos] = useState<Pos>({ sheet: 0, page: 0 });
   const [pageCount, setPageCount] = useState(1);
   const [mapOpen, setMapOpen] = useState(false);
+
+  useEffect(() => {
+    if (mapOpen && !done) {
+      void loadAll();
+    }
+  }, [mapOpen, done, loadAll]);
   const [noteFormat, setNoteFormat] = useState<'txt' | 'md'>('txt');
 
   useEffect(() => {
@@ -1359,6 +1837,17 @@ export function Notebook(props: {
     nudge(null);
   }, [nudge]);
 
+  /** Dónde se apretó sobre las hojas y si eso puede terminar siendo un deslizamiento. */
+  const press = useRef<{ x: number; y: number; swipe: boolean } | null>(null);
+  const drag = useRef({ selecting: false, direction: 0 as 0 | 1 | -1, timer: 0 });
+  const wheel = useRef({ sum: 0, last: 0, free: 0 });
+
+  const stopHold = useCallback(() => {
+    window.clearTimeout(drag.current.timer);
+    drag.current.timer = 0;
+    drag.current.direction = 0;
+  }, []);
+
   const sheets = useMemo(
     () => (pinned && !items.some((item) => item.id === pinned.sheet.id) ? [pinned.sheet, ...items] : items),
     [items, pinned],
@@ -1429,25 +1918,34 @@ export function Notebook(props: {
   // escribiendo perdería su editor, con el cursor y lo que se tecleara en el medio. Además,
   // para cuando un efecto llegara a mover la vista, `anchor` ya apuntaría a la vecina.
   const [listed, setListed] = useState(sheets);
+  let activePos = pos;
   if (listed !== sheets) {
     setListed(sheets);
-    const kept = anchor.current;
+    const kept = writingId !== null ? writingId : anchor.current;
     // Si entraron notas nuevas adelante, se sigue mostrando la que se estaba leyendo;
     // en la primera no, porque ahí lo esperable es ver lo más reciente (salvo que se
     // la esté escribiendo: una hoja no cambia debajo del cursor).
-    const follow = kept !== null && (pos.sheet > 0 || writingId === kept);
+    const follow = kept !== null && (pos.sheet > 0 || writingId !== null);
     const found = follow ? sheets.findIndex((item) => item.id === kept) : -1;
     const clamped = Math.max(0, Math.min(pos.sheet, sheets.length - 1));
+    if (typeof window !== 'undefined') {
+      (window as any).__listedLog = (window as any).__listedLog || [];
+      (window as any).__listedLog.push({ posSheet: pos.sheet, kept, writingId, found, sheetsCount: sheets.length, firstSheetId: sheets[0]?.id });
+    }
     if (found >= 0) {
-      if (found !== pos.sheet) setPos({ sheet: found, page: pos.page });
+      if (found !== pos.sheet) {
+        setPos({ sheet: found, page: pos.page });
+        activePos = { sheet: found, page: pos.page };
+      }
     } else if (clamped !== pos.sheet) {
       setPos({ sheet: clamped, page: 0 });
+      activePos = { sheet: clamped, page: 0 };
     }
   }
 
   useEffect(() => {
-    anchor.current = sheets[pos.sheet]?.id ?? null;
-  }, [sheets, pos.sheet]);
+    anchor.current = sheets[activePos.sheet]?.id ?? null;
+  }, [sheets, activePos.sheet]);
 
   useEffect(() => {
     setPos((current) => (current.page % perView === 0 ? current : { ...current, page: current.page - (current.page % perView) }));
@@ -1495,7 +1993,13 @@ export function Notebook(props: {
   const setClosed = useCallback(
     (next: boolean, _quiet = false) => {
       if (next === closed) return;
-      if (next) void finishWriting();
+      if (next) {
+        void finishWriting();
+        cancelTurn();
+        stopHold();
+        press.current = null;
+        coverBusy.current = false;
+      }
       window.clearTimeout(timers.current.swap);
       setSwapping(true);
       timers.current.swap = window.setTimeout(() => {
@@ -1503,7 +2007,7 @@ export function Notebook(props: {
         setSwapping(false);
       }, COVER_OUT);
     },
-    [closed, onClosed, finishWriting],
+    [closed, onClosed, finishWriting, cancelTurn, stopHold],
   );
 
   // Cerrado, el cuaderno tiene dos caras: la tapa y la contratapa.
@@ -1517,12 +2021,24 @@ export function Notebook(props: {
   /** Cierra el cuaderno dejando a la vista esa cara. */
   const closeTo = useCallback(
     (side: Face) => {
+      cancelTurn();
+      stopHold();
+      press.current = null;
       closedOn.current = side;
       showFace(side);
       setClosed(true);
     },
-    [showFace, setClosed],
+    [showFace, setClosed, cancelTurn, stopHold],
   );
+
+  useEffect(() => {
+    if (closed) {
+      cancelTurn();
+      stopHold();
+      press.current = null;
+      coverBusy.current = false;
+    }
+  }, [closed, cancelTurn, stopHold]);
 
   /**
    * Abre el cuaderno por la cara que se está viendo. Por la contratapa, siempre en la
@@ -1553,7 +2069,7 @@ export function Notebook(props: {
       .finally(() => setClosed(false));
   }, [face, setClosed, loadAll]);
 
-  const sheet = sheets[pos.sheet];
+  const sheet = sheets[activePos.sheet];
 
   /**
    * Pasa de página y avisa si pasó algo (si no había a dónde ir, no). Antes de la primera
@@ -1566,8 +2082,8 @@ export function Notebook(props: {
     (delta: 1 | -1, selecting = false, within = false): boolean => {
       const direction: Direction = delta > 0 ? 'next' : 'prev';
       if (closed) {
-        // Cerrado se abre hacia adentro: desde la tapa, avanzando; desde la contratapa, volviendo.
-        const opens = !coverBusy.current && (face === 'back' ? delta < 0 : delta > 0);
+        // Cerrado se abre hacia adentro: desde la tapa o contratapa, cualquier intento de pasar de página lo abre.
+        const opens = !coverBusy.current;
         if (opens) openBook();
         return opens;
       }
@@ -1631,6 +2147,62 @@ export function Notebook(props: {
     [closed, face, openBook, closeTo, done, pos, perView, pageCount, sheets, finishWriting],
   );
 
+  /** Pasa de hoja entera (anterior o siguiente) sin recorrer página por página. */
+  const goSheet = useCallback(
+    (delta: 1 | -1): boolean => {
+      const direction: Direction = delta > 0 ? 'next' : 'prev';
+      if (closed) {
+        const opens = !coverBusy.current;
+        if (opens) openBook();
+        return opens;
+      }
+      if (turning.current) return false;
+      let next = pos;
+      if (delta > 0) {
+        if (pos.sheet + 1 < sheets.length) {
+          next = { sheet: pos.sheet + 1, page: 0 };
+        } else if (!done) {
+          loadMore();
+          return false;
+        } else {
+          closeTo('back');
+          return true;
+        }
+      } else {
+        if (pos.sheet > 0) {
+          next = { sheet: pos.sheet - 1, page: 0 };
+        } else if (pos.page > 0) {
+          next = { sheet: 0, page: 0 };
+        } else {
+          closeTo('front');
+          return true;
+        }
+      }
+      if (next.sheet === pos.sheet && next.page === pos.page) return false;
+      const changesNote = next.sheet !== pos.sheet;
+      const target = sheets[next.sheet]?.id;
+      if (changesNote) void finishWriting();
+      const apply = () => {
+        turning.current = false;
+        playSound(delta > 0 ? 'turn-next' : 'turn-prev');
+        stickToEnd.current = false;
+        if (changesNote) setPageCount(1);
+        setRetained((kept) => (kept.length ? [] : kept));
+        setTurn((current) => ({ direction, tick: current.tick + 1 }));
+        const found = changesNote ? live.current.sheets.findIndex((item) => item.id === target) : -1;
+        if (changesNote && target !== undefined) anchor.current = target;
+        setPos(found >= 0 ? { sheet: found, page: next.page } : next);
+        setFading(false);
+      };
+      window.clearTimeout(timers.current.turn);
+      turning.current = true;
+      setFading(true);
+      timers.current.turn = window.setTimeout(apply, TURN_OUT);
+      return true;
+    },
+    [closed, face, openBook, closeTo, done, loadMore, pos, sheets, finishWriting],
+  );
+
   const goFirst = useCallback(() => {
     void finishWriting();
     cancelTurn();
@@ -1689,6 +2261,7 @@ export function Notebook(props: {
         hidden: false,
         missing: false,
         versionCount: 0,
+        pinned: false,
       },
       release: false,
     });
@@ -1729,13 +2302,19 @@ export function Notebook(props: {
           lastHeldTurn.current = at;
           go(action === 'next' ? 1 : -1);
         }
+      } else if (action === 'sheet-next' || action === 'sheet-prev') {
+        const at = performance.now();
+        if (!event.repeat || at - lastHeldTurn.current >= HOLD_PACE) {
+          lastHeldTurn.current = at;
+          goSheet(action === 'sheet-next' ? 1 : -1);
+        }
       } else if (action === 'first') goFirst();
       else goLast();
       event.preventDefault();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [go, goFirst, goLast]);
+  }, [go, goSheet, goFirst, goLast]);
 
   // Guardar y dejar de escribir con el teclado, esté donde esté el foco (el texto, el
   // título, un botón de la hoja): Ctrl + Enter guarda y termina; Ctrl + S guarda y se sigue.
@@ -1778,17 +2357,6 @@ export function Notebook(props: {
   }, [away, backToAll]);
 
   // ---- clic en los bordes, deslizar y selección que sigue en la hoja siguiente ----
-
-  /** Dónde se apretó sobre las hojas y si eso puede terminar siendo un deslizamiento. */
-  const press = useRef<{ x: number; y: number; swipe: boolean } | null>(null);
-  const drag = useRef({ selecting: false, direction: 0 as 0 | 1 | -1, timer: 0 });
-  const wheel = useRef({ sum: 0, last: 0, free: 0 });
-
-  const stopHold = useCallback(() => {
-    window.clearTimeout(drag.current.timer);
-    drag.current.timer = 0;
-    drag.current.direction = 0;
-  }, []);
 
   // Lo que entra después de pasar página llega derecho a su lugar: el corrimiento del
   // deslizamiento era de lo que se fue.
@@ -1894,6 +2462,11 @@ export function Notebook(props: {
     if (swipe) nudge(null);
   };
 
+  const canGoPrevSheet = pos.sheet > 0 || pos.page > 0;
+  const canGoNextSheet = pos.sheet + 1 < sheets.length || !done;
+  /** Queda algo adelante: más páginas de esta nota u otra hoja. */
+  const canGoOn = pos.page + perView < pageCount || pos.sheet + 1 < sheets.length;
+
   /**
    * Leyendo, solo pasa página un clic en las franjas de los bordes de afuera (`TurnZones`):
    * en el resto de la hoja un clic no hace nada, y por eso no hay que esperar para saber si
@@ -1918,7 +2491,22 @@ export function Notebook(props: {
       return placeCaretNear(editing, event.clientX, event.clientY, { left, right: left + g.column, top, bottom: top + g.bodyHeight });
     }
     const zone = target.closest('.turn-zone');
-    if (zone) go(zone.classList.contains('prev') ? -1 : 1);
+    if (zone) {
+      go(zone.classList.contains('prev') ? -1 : 1);
+      return;
+    }
+    // Clic simple en los bordes y esquinas de la hoja para pasar página:
+    if (!target.closest(`.page-text, .page-head, .page-bar, .page-foot, ${CONTROLS}`)) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < rect.left + geometry.turnBack) {
+        go(-1);
+        return;
+      }
+      if ((canGoOn || done) && event.clientX > rect.right - geometry.turnOn) {
+        go(1);
+        return;
+      }
+    }
   };
 
   /**
@@ -1926,13 +2514,15 @@ export function Notebook(props: {
    * giro. Escribiendo no sale de la nota: un toque de más no termina la escritura.
    */
   const onWheel = (event: WheelEvent) => {
-    if (fromOutside(event) || event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    if (fromOutside(event) || event.ctrlKey) return;
     const state = wheel.current;
     const at = performance.now();
     if (at - state.last > WHEEL_PAUSE) state.sum = 0;
     state.last = at;
     if (at < state.free) return;
-    state.sum += event.deltaY;
+    const effectiveDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (Math.abs(effectiveDelta) === 0) return;
+    state.sum += effectiveDelta;
     if (Math.abs(state.sum) < WHEEL_STEP) return;
     const delta = state.sum > 0 ? 1 : -1;
     state.sum = 0;
@@ -2003,35 +2593,71 @@ export function Notebook(props: {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  useEffect(() => api.onOpenMap(() => setMapOpen(true)), []);
+
+  useEffect(
+    () =>
+      api.onFocusSheet((targetId) => {
+        void finishWriting();
+        cancelTurn();
+        setClosed(false, true);
+        const found = live.current.sheets.findIndex((item) => item.id === targetId);
+        if (found >= 0) {
+          anchor.current = targetId;
+          stickToEnd.current = false;
+          setPageCount(1);
+          setPos({ sheet: found, page: 0 });
+        } else {
+          void loadAll().then((all) => {
+            const idx = all.findIndex((item) => item.id === targetId);
+            if (idx >= 0) {
+              anchor.current = targetId;
+              stickToEnd.current = false;
+              setPageCount(1);
+              setPos({ sheet: idx, page: 0 });
+            }
+          });
+        }
+      }),
+    [finishWriting, cancelTurn, setClosed, loadAll],
+  );
+
   const extra = sheets.length - items.length;
   const total = props.total !== undefined ? props.total + extra : done ? sheets.length : undefined;
   const counter = sheet
     ? total !== undefined
-      ? t('Hoja {n} de {total}', { n: count(pos.sheet + 1), total: count(Math.max(total, pos.sheet + 1)) })
-      : t('Hoja {n}', { n: count(pos.sheet + 1) })
+      ? t('Hoja {n} de {total}', { n: count(activePos.sheet + 1), total: count(Math.max(total, activePos.sheet + 1)) })
+      : t('Hoja {n}', { n: count(activePos.sheet + 1) })
     : '';
-  const mounted = sheets.filter((item, index) => index === pos.sheet || retained.includes(item.id));
-  /** Queda algo adelante: más páginas de esta nota u otra hoja. */
-  const canGoOn = pos.page + perView < pageCount || pos.sheet + 1 < sheets.length;
+  const mounted = sheets.filter((item, index) => index === activePos.sheet || retained.includes(item.id));
   const closeBook = useCallback(() => closeTo('front'), [closeTo]);
   const coverMenu = [...props.menuBefore, ...props.menuAfter];
-  const pageMenu: MenuItem[] = [
-    ...props.menuBefore,
-    { label: t('Mapa del cuaderno (Ctrl + M)'), icon: <Compass size={14} />, hint: 'Ctrl+M', onSelect: () => setMapOpen(true) },
-    { label: t('Ir a la primera hoja'), icon: <ChevronFirst size={14} />, hint: hintOf('first'), separator: true, onSelect: goFirst },
+  const navItems: MenuItem[] = [
+    { label: t('Hoja anterior'), icon: <ChevronsLeft size={14} />, hint: hintOf('sheet-prev'), onSelect: () => goSheet(-1) },
+    { label: t('Hoja siguiente'), icon: <ChevronsRight size={14} />, hint: hintOf('sheet-next'), onSelect: () => goSheet(1) },
+    { label: t('Ir a la primera hoja'), icon: <ChevronFirst size={14} />, hint: hintOf('first'), onSelect: goFirst },
     { label: t('Ir a la última hoja'), icon: <ChevronLast size={14} />, hint: hintOf('last'), onSelect: goLast },
+    { label: t('Mapa del cuaderno (Ctrl + M)'), icon: <Compass size={14} />, hint: 'Ctrl+M', onSelect: () => setMapOpen(true) },
   ];
 
   return (
     // La letra se mide acá, en el mismo dibujo que la geometría de las páginas.
-    <div className={`stage${props.tabs ? '' : ' no-tabs'}`} style={textVars(textSize)} data-tauri-drag-region>
+    <div
+      className={`stage${props.tabs ? '' : ' no-tabs'}`}
+      style={textVars(textSize)}
+      data-tauri-drag-region={closed ? undefined : ''}
+      onMouseDown={(e) => {
+        if (e.button === 0 && !(e.target as Element).closest('.book, button, a, input, textarea, .menu-list, [role="button"], [role="menuitem"]')) {
+          api.window.drag();
+        }
+      }}
+    >
       <div
         className={`book ${spread}${closed ? ' closed' : ''}`}
         style={{ width: props.book.width, height: props.book.height }}
         // Qué cara se ve y en qué mitad del giro va, para darlo vuelta (styles/cover.css).
         data-face={closed ? face : undefined}
         data-flip={(closed && faces.flip) || undefined}
-        data-tauri-drag-region
       >
         {props.tabs && <Tabs tabs={props.tabs} view={props.view} onView={onView} />}
         {spread === 'single' && <Spiral />}
@@ -2067,7 +2693,7 @@ export function Notebook(props: {
                   active={item.id === sheet.id}
                   categories={props.categories}
                   geometry={geometry}
-                  page={item.id === sheet.id ? pos.page : 0}
+                  page={item.id === sheet.id ? activePos.page : 0}
                   pageCount={pageCount}
                   turn={turn}
                   fading={fading}
@@ -2076,6 +2702,12 @@ export function Notebook(props: {
                   chips={props.chips}
                   writer={writer}
                   notesDir={props.notesDir}
+                  hideHeader={props.hideHeader}
+                  centerTitle={props.centerTitle}
+                  onPageTurn={go}
+                  onSheetTurn={goSheet}
+                  canGoPrevSheet={canGoPrevSheet}
+                  canGoNextSheet={canGoNextSheet}
                   markdown={props.markdown}
                   onPages={handlePages}
                   onCaretPage={handleCaretPage}
@@ -2086,9 +2718,15 @@ export function Notebook(props: {
                   onBack={away ? backToAll : undefined}
                   onOpenMap={() => setMapOpen(true)}
                   noteFormat={noteFormat}
+                  revision={props.revision}
                   actions={props.actions}
-                  menuBefore={pageMenu}
+                  menuBefore={props.menuBefore}
+                  navItems={navItems}
                   menuAfter={props.menuAfter}
+                  allTabs={props.allTabs ?? props.tabs ?? []}
+                  view={props.view}
+                  onView={onView}
+                  hideTabs={props.hideTabs ?? (props.tabs === null)}
                   onSavedNote={handleSavedNote}
                 />
               ))
@@ -2100,6 +2738,10 @@ export function Notebook(props: {
                 actions={props.actions}
                 onClose={closeBook}
                 onOpenMap={() => setMapOpen(true)}
+                allTabs={props.allTabs ?? props.tabs ?? []}
+                view={props.view}
+                onView={onView}
+                hideTabs={props.hideTabs ?? (props.tabs === null)}
               >
                 {loading || sheet ? (
                   <LoaderCircle size={18} className="spin late" />

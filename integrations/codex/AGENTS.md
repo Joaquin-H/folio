@@ -1,50 +1,49 @@
-<!-- folio:inicio · Instrucciones de Folio para tomar notas. Folio agrega y quita este bloque desde Ajustes → Integraciones; lo que esté fuera de él no lo toca. -->
-## Notas para Folio
+<!-- folio:inicio · Instrucciones de Folio para tomar notas y controlar el cuaderno. Folio agrega y quita este bloque desde Ajustes → Integraciones; lo que esté fuera de él no lo toca. -->
+## Control de Folio y notas (`folio mcp`)
 
-Folio es el cuaderno donde el usuario reúne sus notas. Lee los archivos de la carpeta
-`{{CARPETA_DE_NOTAS}}` y los muestra con formato: el encabezado le da el título, la
-categoría y las etiquetas a la hoja.
+Folio es el cuaderno visual donde el usuario reúne y organiza todas sus notas (`{{CARPETA_DE_NOTAS}}`). Incluye un servidor **MCP (Model Context Protocol, stdio)** integrado en el ejecutable (`folio mcp` o `folio --mcp`) que permite controlar todo el cuaderno programáticamente.
 
-Cuando el usuario pida anotar algo, tomar nota, guardar algo en Folio o dejar un resumen
-para después ("anotá esto", "guardalo en Folio", "take a note"):
+### Configuración MCP
+En `mcp_config.json`, `.codex/config.toml`, `.cursor/mcp.json` o `.vscode/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "folio": {
+      "command": "folio",
+      "args": ["mcp"]
+    }
+  }
+}
+```
 
-1. Fijate la fecha de hoy (la del sistema) y elegí un tema corto: en minúsculas, sin
-   tildes, con guiones.
-2. El archivo va en `{{CARPETA_DE_NOTAS}}` (creá la carpeta si no existe) y se llama
-   `AAAA-MM-DD-tema.md`, por ejemplo `2026-10-14-plan-de-migracion.md`.
-3. Nunca pises un archivo: si el nombre ya existe, probá con `-2`, `-3`… al final del
-   nombre. Si el usuario pide agregar a una nota que ya existe, agregá al final y no
-   borres nada.
-4. Escribilo en UTF-8 con este formato:
+### Herramientas MCP disponibles (`folio_*`)
+- ** Consultar y buscar**: `folio_get_overview`, `folio_list_sheets` (`view`: `'all' | 'today' | 'uncategorized' | 'category' | 'secret' | 'hidden'`, `query`, `categoryId`, `limit`), `folio_get_sheet` (`id`).
+- **Crear y editar**: `folio_create_sheet` (`title`, `content`, `categoryId`, `categoryName`, `createCategoryIfMissing`, `pinned`, `tearOff`, `collapsed`), `folio_update_sheet` (`id`, `content`, `title`, `append`).
+- **Categorizar**: `folio_list_categories`, `folio_create_category` (`name`, `description`, `color`), `folio_update_category`, `folio_delete_category`, `folio_set_sheet_category` (`id`, `categoryId`, `categoryName`), `folio_suggest_categories`.
+- **Organizar**: `folio_set_sheet_pinned` (`id`, `pinned`), `folio_move_sheet` (`id`, `destination`: `'clippings' | 'secret' | 'trash' | 'notebook'`).
+- **Hojas flotantes y ventana**: `folio_tear_off_sheet` (`id`, `collapsed`, `pinned`), `folio_set_floating_sheet_mode` (`id`, `collapsed`, `pinned`), `folio_return_torn_off_sheet` (`id`), `folio_list_torn_off_sheets`, `folio_open_map`, `folio_open_notebook` (`sheetId`), `folio_open_capture`, `folio_rescan`.
 
-   ```markdown
-   ---
-   titulo: Título corto y claro
-   categoria: Trabajo
-   etiquetas: [tema, otro-tema]
-   fuente: Codex
-   fecha: AAAA-MM-DD
-   ---
+### Creación directa de archivos (si no usás MCP)
+Si no tenés el servidor MCP conectado, guardá archivos `.md` en UTF-8 dentro de `{{CARPETA_DE_NOTAS}}` con nombre `AAAA-MM-DD-tema.md` (sin pisar archivos existentes; usá `-2`, `-3` si ya existe):
 
-   # Título corto y claro
+```markdown
+---
+titulo: Título corto y claro
+categoria: Trabajo
+etiquetas: [tema, otro-tema]
+fuente: Codex
+fecha: AAAA-MM-DD
+---
 
-   Una o dos frases con lo esencial.
+# Título corto y claro
 
-   ## Pendientes
-   - [ ] Lo que falta hacer
-   - [x] Lo que ya está
-   ```
+Una o dos frases con lo esencial.
 
-   - `categoria` es opcional: poné una sola, y solo si sabés que el usuario la tiene
-     (por ejemplo Trabajo, Proyectos, Código, Casa, Compras, Finanzas, Salud, Ideas).
-   - `etiquetas`: de una a cinco palabras clave, en minúsculas.
-   - El cuerpo en markdown simple: títulos con `#`, párrafos cortos, listas, tareas
-     `- [ ]`, código entre ` ``` ` con el lenguaje, tablas chicas, enlaces completos
-     (`https://…`). Sin HTML.
-5. Nada de secretos: no guardes contraseñas, tokens, claves de API, datos de tarjetas
-   ni datos personales sensibles. Si aparecen, reemplazalos por `[omitido]`.
-6. Al terminar, decí en una línea dónde quedó la nota.
+## Pendientes
+- [ ] Lo que falta hacer
+- [x] Lo que ya está
+```
 
-No guardes notas por tu cuenta: si algo parece valer la pena, ofrecelo en una línea y
-esperá la respuesta.
+- Si el usuario pide dejar una nota flotando o a la vista mientras trabaja, usá `folio_create_sheet` con `tearOff: true` o `folio_tear_off_sheet`.
+- No guardes notas por tu cuenta sin que el usuario lo pida, ni escribas secretos en texto plano (para notas sensibles usá `folio_move_sheet` con `destination: "secret"`).
 <!-- folio:fin -->

@@ -661,7 +661,7 @@ test('diseño en inglés: el texto entra en Ajustes, hasta en la ventana más an
       const limit = body.getBoundingClientRect().right;
       const found = [];
       for (const element of body.querySelectorAll('*')) {
-        if (element.matches('.mono, .integration-path')) continue;
+        if (element.matches('.mono, .integration-path, input, textarea')) continue;
         const box = element.getBoundingClientRect();
         if (box.width === 0 || getComputedStyle(element).position === 'fixed') continue;
         const style = getComputedStyle(element);

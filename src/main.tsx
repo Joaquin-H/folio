@@ -3,9 +3,14 @@ import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './styles.css';
 import { App } from './App';
-import { CaptureWindow } from './components/CaptureWindow';
+import { CaptureWindow, TearOffWindow } from './components/CaptureWindow';
 import { SettingsWindow } from './components/Settings';
 import { applyPrefs, loadPrefs } from './hooks';
+
+// La app tiene tres ventanas que comparten este mismo código: el cuaderno, los ajustes
+// y la captura rápida. Cada una se identifica con un parámetro en su dirección.
+const which = new URLSearchParams(location.search).get('window');
+document.documentElement.dataset.window = which ?? 'notebook';
 
 // Antes del primer dibujo, para que la ventana no parpadee con el tema equivocado.
 applyPrefs(loadPrefs());
@@ -47,7 +52,6 @@ window.addEventListener(
     // Ctrl+H (Historial), Ctrl+J (Descargas), Ctrl+P (Imprimir), Ctrl+G (Buscar), Ctrl+U (Código fuente)
     if (isCtrlOrMeta && (key === 'h' || key === 'j' || key === 'p' || key === 'g' || key === 'u')) {
       event.preventDefault();
-      event.stopPropagation();
       return;
     }
   },
@@ -64,11 +68,16 @@ window.addEventListener('contextmenu', (event) => {
   }
 });
 
-// La app tiene tres ventanas que comparten este mismo código: el cuaderno, los ajustes
-// y la captura rápida. Cada una se identifica con un parámetro en su dirección.
-const which = new URLSearchParams(location.search).get('window');
-document.documentElement.dataset.window = which ?? 'notebook';
-
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{which === 'settings' ? <SettingsWindow /> : which === 'capture' ? <CaptureWindow /> : <App />}</StrictMode>,
+  <StrictMode>
+    {which === 'settings' ? (
+      <SettingsWindow />
+    ) : which === 'capture' ? (
+      <CaptureWindow />
+    ) : which === 'tearoff' ? (
+      <TearOffWindow />
+    ) : (
+      <App />
+    )}
+  </StrictMode>,
 );

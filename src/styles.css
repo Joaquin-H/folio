@@ -145,9 +145,104 @@ textarea:focus-visible {
 /* La ventana mide exactamente lo que el cuaderno más una franja de mesa alrededor
    (ver layout.ts). No tiene barra de título: se arrastra desde la mesa o la tapa. */
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/* Ventana de cuaderno sin marco o inmersiva: fondo transparente sobre el escritorio */
+html[data-borderless='true'],
+html[data-borderless='true'] body,
+html[data-borderless='true'] #root,
+html[data-borderless='true'] .app,
+html[data-borderless='true'] .stage,
+html[data-borderless='true'] .notebook-wrap,
+html[data-frame='none'],
+html[data-frame='none'] body,
+html[data-frame='none'] #root,
+html[data-frame='none'] .app,
+html[data-frame='none'] .stage,
+html[data-frame='none'] .notebook-wrap,
+html[data-frame='transparent'],
+html[data-frame='transparent'] body,
+html[data-frame='transparent'] #root,
+html[data-frame='transparent'] .app,
+html[data-frame='transparent'] .stage,
+html[data-frame='transparent'] .notebook-wrap,
+html[data-window='notebook'][data-borderless='true'],
+html[data-window='notebook'][data-borderless='true'] body,
+html[data-window='notebook'][data-borderless='true'] #root,
+html[data-window='notebook'][data-borderless='true'] .app,
+html[data-window='notebook'][data-borderless='true'] .stage,
+html[data-window='notebook'][data-borderless='true'] .notebook-wrap,
+.app.immersive,
+.app.immersive .stage,
+.app.borderless,
+.app.borderless .stage {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Sombra enriquecida para el cuaderno con borde transparente flotando sobre el escritorio */
+html[data-window='notebook'][data-frame='transparent'] .book,
+html[data-frame='transparent'] .book {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 10px 24px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+html[data-window='notebook'][data-frame='transparent'][data-theme='dark'] .book,
+html[data-frame='transparent'][data-theme='dark'] .book {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 1px 4px rgba(0, 0, 0, 0.35),
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Modo inmersivo (frame='none'): la ventana ajusta al cuaderno sin margen lateral ni inferior;
+   la franja superior permanece transparente para que las solapas asomen naturalmente sobre el cuaderno. */
+html[data-window='notebook'][data-frame='none'] .stage,
+html[data-frame='none'] .stage,
+.app.immersive .stage {
+  padding: 22px 0 0;
+  place-items: stretch;
+}
+
+html[data-window='notebook'][data-frame='none'] .stage.no-tabs,
+html[data-frame='none'] .stage.no-tabs,
+.app.immersive .stage.no-tabs {
+  padding-top: 0;
+}
+
+html[data-window='notebook'][data-frame='none'] .book,
+html[data-frame='none'] .book,
+.app.immersive .book {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+
+html[data-window='notebook'][data-frame='none'][data-theme='dark'] .book,
+html[data-frame='none'][data-theme='dark'] .book,
+:root[data-theme='dark'] .app.immersive .book {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+
+html[data-window='notebook'][data-frame='none'] .cover,
+html[data-frame='none'] .cover,
+.app.immersive .cover {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
 }
 
 /* ---- cuaderno ---------------------------------------------------------- */
@@ -231,18 +326,30 @@ textarea:focus-visible {
 
 .tabs {
   position: absolute;
-  top: -25px;
+  top: -21px;
   right: 16px;
   left: 16px;
   display: flex;
   gap: 3px;
   align-items: flex-end;
-  height: 26px;
+  height: 22px;
   container-type: inline-size;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-.book.single .tabs {
-  left: 30px;
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.book.single:not(.closed) .tabs {
+  left: 24px;
+}
+
+.book.closed .tabs {
+  left: 48px;
 }
 
 .tab {
@@ -251,20 +358,22 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   min-width: 8px;
-  height: 20px;
+  height: 22px;
   padding: 0 10px;
   overflow: hidden;
   border: 0;
-  border-radius: 7px 7px 0 0;
-  box-shadow: inset 0 -6px 6px -6px rgba(0, 0, 0, 0.28);
+  border-radius: 6px 6px 0 0;
+  box-shadow: inset 0 -3px 4px -3px rgba(0, 0, 0, 0.25);
   font: inherit;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
-  opacity: 0.78;
+  opacity: 0.72;
+  filter: saturate(0.85);
   transition:
-    height 0.14s ease,
-    opacity 0.14s ease;
+    opacity 0.15s ease,
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .tab-name {
@@ -273,30 +382,70 @@ textarea:focus-visible {
 }
 
 .tab:hover {
-  height: 23px;
-  opacity: 1;
+  opacity: 0.95;
+  filter: saturate(1);
+}
+
+:root[data-theme='dark'] .tab:not(.active) {
+  box-shadow: inset 0 -3px 3px -3px rgba(0, 0, 0, 0.35);
 }
 
 .tab.active {
   flex-shrink: 0;
-  height: 26px;
-  box-shadow: none;
-  font-weight: 700;
+  height: 22px;
   opacity: 1;
+  filter: saturate(1.1);
+  font-weight: 700;
+  box-shadow: inset 0 -2.5px 0 0 currentColor;
 }
 
 .tab.icon-only {
   flex: none;
-  width: 30px;
+  width: 28px;
   padding: 0;
+}
+
+.tab.color-only {
+  position: relative;
+  flex: none;
+  width: 22px;
+  padding: 0;
+}
+
+.tab.color-only.active {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.tab.color-only.active::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  content: '';
 }
 
 .tab.at-end {
   margin-left: auto;
+  opacity: 0.72;
 }
 
 .tab.at-end ~ .tab.at-end {
   margin-left: 0;
+}
+
+.tab.at-end:hover {
+  opacity: 0.95;
+}
+
+.tab.at-end.active {
+  opacity: 1;
+  box-shadow: inset 0 -2.5px 0 0 currentColor;
 }
 
 /* con poco ancho solo la solapa activa muestra su nombre; las demás son su color */
@@ -306,7 +455,7 @@ textarea:focus-visible {
   }
 
   .tab:not(.active):not(.icon-only) {
-    width: 22px;
+    width: 20px;
     padding: 0;
   }
 }
@@ -315,9 +464,15 @@ textarea:focus-visible {
 
 .page {
   position: relative;
+  z-index: 10;
   min-width: 0;
   background: var(--paper);
   transition: background-color 0.25s ease;
+}
+
+.page:has(.menu.open),
+.page:has(.menu-list) {
+  z-index: 30;
 }
 
 .page.left {
@@ -341,7 +496,7 @@ textarea:focus-visible {
   top: 0;
   bottom: 0;
   left: 46px;
-  z-index: 1;
+  z-index: 2;
   width: 1px;
   background: var(--margin-line);
   content: '';
@@ -372,6 +527,17 @@ textarea:focus-visible {
 .page.right::after {
   left: 0;
   background: linear-gradient(to right, var(--fold), transparent);
+}
+
+/* Las hojas con categoría llevan su franja superior del color de la categoría,
+   pegada directamente al papel sin hueco negro en claro ni en oscuro. */
+.page.categorized.left {
+  box-shadow: inset 0 3px 0 var(--sheet-cat-color), -2px 0 0 -0.5px var(--paper-edge), -4px 0 0 -1px var(--paper-edge);
+}
+
+.page.categorized.right,
+.page.categorized.only {
+  box-shadow: inset 0 3px 0 var(--sheet-cat-color), 2px 0 0 -0.5px var(--paper-edge), 4px 0 0 -1px var(--paper-edge);
 }
 
 /* Las hojas del secret-book y de la papelera se reconocen de un vistazo:
@@ -447,7 +613,10 @@ textarea:focus-visible {
    y por debajo de los botones del papel. */
 .turn-zone {
   position: absolute;
-  z-index: 2;
+  top: 0;
+  bottom: 0;
+  z-index: 15;
+  pointer-events: auto;
 }
 
 .turn-zone.prev {
@@ -476,40 +645,91 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
-/* Encabezado de la nota: tapa el rayado de los renglones que ocupa. Deja pasar los
-   clics a la hoja salvo en sus propios controles. */
-.page-head {
+/* Encabezado de la nota: integrado con el papel cálido y atravesado por el margen rojo.
+   Deja pasar los clics a la hoja salvo en sus propios controles. */
+.page-head,
+.page-header {
   position: absolute;
   right: 0;
   left: 0;
-  padding-bottom: 9px;
-  background: inherit;
+  z-index: 20;
+  padding-bottom: 6px;
+  background: transparent;
   pointer-events: none;
   transition: opacity 0.09s ease;
   animation: fade 0.24s ease;
 }
 
 .page-head.fading,
+.page-header.fading,
 .flow-clip.fading {
   opacity: 0;
 }
 
 .page-head button,
 .page-head .menu,
-.page-title {
+.page-head .chip,
+.page-head .page-title,
+.page-head .page-actions-row,
+.page-header button,
+.page-header .menu,
+.page-header .chip,
+.page-header .page-title,
+.page-header .page-actions-row {
   pointer-events: auto;
+  position: relative;
+  z-index: 20;
 }
 
+/* Línea 1: Título (protagonista, editable al hacer clic) */
+.page-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  min-width: 0;
+  margin-top: 1px;
+}
+
+.page-title {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+  cursor: pointer;
+}
+
+/* Línea 2: Fecha · Guardado · Etiqueta/categoría */
 .page-date {
   display: flex;
-  gap: 12px;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
+  min-height: 20px;
+  width: 100%;
+  margin-top: 2px;
   color: var(--label-2);
-  font-size: 12.5px;
+  font-size: 11.5px;
+  cursor: grab;
 }
 
-.page-date span {
+.page-date:active {
+  cursor: grabbing;
+}
+
+.page-date-main {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.page-date-main > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -521,36 +741,180 @@ textarea:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.page-title {
-  width: fit-content;
-  max-width: 100%;
-  margin: 1px 0 0;
-  overflow: hidden;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.018em;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  user-select: text;
-  cursor: text;
+.meta-sep {
+  display: inline-flex;
+  align-items: center;
+  color: var(--label-3);
+  opacity: 0.55;
+  user-select: none;
+  margin: 0 1px;
+}
+
+.page-head.compact .page-date time,
+.page-header.compact .page-date time {
+  display: none;
 }
 
 .page-meta {
-  display: flex;
+  display: inline-flex;
+  flex: 1 1 100%;
+  width: 100%;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 2px 5px;
   align-items: center;
-  margin-top: 5px;
+  justify-content: flex-start;
   color: var(--label-2);
-  font-size: 12px;
+  font-size: 11px;
+  opacity: 0.8;
+  transition: opacity 0.16s ease;
+  pointer-events: auto;
+}
+
+.page-head:hover .page-meta,
+.page-header:hover .page-meta,
+.page-meta:hover,
+.page-meta:focus-within {
+  opacity: 1;
+}
+
+.page-head,
+.page-header {
+  container-type: inline-size;
+  container-name: pagehead;
+}
+
+/* Línea 3: Acciones (Categoría, Fijar, Arrancar, Versiones) */
+.page-actions-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px 6px;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 5px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 20;
+}
+
+@container pagehead (max-width: 460px) {
+  .page-actions-row .meta-btn .meta-text {
+    display: none;
+  }
+}
+
+.page-actions-row.compact .meta-btn .meta-text,
+.page-actions-row.icon-only .meta-btn .meta-text {
+  display: none;
+}
+
+/* Selector y menú desplegable de categoría de la hoja en la fila de acciones */
+.cat-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.cat-picker.open,
+.cat-picker:has([aria-expanded='true']),
+.cat-picker:focus-within {
+  z-index: 50;
+}
+
+.cat-pop,
+.cat-picker .menu-list {
+  z-index: 100 !important;
+}
+
+.cat-arrow {
+  flex: none;
+  margin-left: 1px;
+}
+
+/* Encabezado centrado de la hoja: alineación coherente en las 3 filas */
+.page-head.centered-title .page-title-row,
+.page-header.centered-title .page-title-row {
+  justify-content: center;
+}
+
+.page-head.centered-title .page-title,
+.page-header.centered-title .page-title {
+  margin-right: auto;
+  margin-left: auto;
+  text-align: center;
+}
+
+.page-head.centered-title .page-title.editable,
+.page-header.centered-title .page-title.editable {
+  margin-right: auto;
+  margin-left: auto;
+  justify-content: center;
+}
+
+.page-head.centered-title .page-title.editable input,
+.page-header.centered-title .page-title.editable input {
+  text-align: center;
+}
+
+.page-head.centered-title .page-date,
+.page-head.centered-title .page-meta,
+.page-header.centered-title .page-date,
+.page-header.centered-title .page-meta {
+  justify-content: center;
+}
+
+.page-head.centered-title .page-actions-row,
+.page-header.centered-title .page-actions-row {
+  justify-content: center;
 }
 
 .page-source {
   display: inline-flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
-  margin-right: 2px;
+}
+
+/* Metadatos discretos en el encabezado de la hoja (sin cápsulas pesadas) */
+.page-head .meta-item,
+.page-head .meta-btn,
+.page-head .sheet-chip,
+.page-head .chip,
+.page-header .meta-item,
+.page-header .meta-btn,
+.page-header .sheet-chip,
+.page-header .chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 20px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--label-2);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: background-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+}
+
+.page-head .meta-btn:hover,
+.page-head .chip:hover,
+.page-header .meta-btn:hover,
+.page-header .chip:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.dot.unset-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.25px var(--label-3);
+}
+
+.page-head.compact .page-meta .meta-item,
+.page-head.compact .page-meta .meta-btn,
+.page-header.compact .page-meta .meta-item,
+.page-header.compact .page-meta .meta-btn {
+  padding: 0 3px;
 }
 
 .chip {
@@ -583,6 +947,10 @@ textarea:focus-visible {
   background: var(--fill);
 }
 
+.page-head .chip.unset {
+  box-shadow: none;
+}
+
 .chip.action-chip {
   background: var(--fill);
   color: var(--accent);
@@ -591,7 +959,33 @@ textarea:focus-visible {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+.page-head .chip.action-chip {
+  background: var(--accent-soft);
+  box-shadow: none;
+}
+
 .chip.action-chip:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.chip.pin-btn {
+  cursor: pointer;
+  gap: 5px;
+}
+
+.chip.pin-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.page-head .chip.pin-btn.active {
+  box-shadow: none;
+}
+
+.chip.pin-btn.active:hover {
   background: var(--accent);
   color: #fff;
 }
@@ -626,6 +1020,7 @@ textarea:focus-visible {
   overflow: hidden;
   pointer-events: none;
   transition: opacity 0.09s ease;
+  z-index: 15;
 }
 
 /* Nota que ya no se ve pero conserva una selección empezada en ella. */
@@ -659,6 +1054,7 @@ textarea:focus-visible {
 .page-foot {
   position: absolute;
   bottom: 8px;
+  z-index: 20;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -676,6 +1072,106 @@ textarea:focus-visible {
   gap: 8px;
   align-items: center;
   min-width: 0;
+}
+
+
+/* Navegación de hojas y páginas al pie */
+.sheet-nav-group,
+.page-nav-group {
+  position: relative;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: auto;
+}
+
+.nav-btn {
+  position: relative;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--label-3);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 0.12s, color 0.12s, opacity 0.12s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.sheet-indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.sheet-indicator-badge:hover {
+  background: var(--fill-hover, var(--fill));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sheet-indicator-accent {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent-soft);
+  flex-shrink: 0;
+}
+
+.sheet-chip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+}
+
+.sheet-chip .sheet-indicator-accent {
+  margin-right: 2px;
+}
+
+.page-nav-counter {
+  padding: 0 3px;
+  color: var(--label-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
 .pill {
@@ -726,17 +1222,74 @@ textarea:focus-visible {
 
 /* Controles sobre el papel, en la franja de arriba: a la izquierda los del cuaderno
    (cerrarlo, cerrar la ventana), a la derecha los de las hojas (buscar, nueva hoja, menú). */
+.page-bar {
+  position: absolute;
+  top: 3px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.page-bar > * {
+  pointer-events: auto;
+}
+
+.page-bar .page-controls {
+  position: static;
+  flex: none;
+}
+
+.page-bar .page-actions {
+  position: static;
+  flex: none;
+}
+
+.page-bar .page-mode {
+  position: static;
+  top: auto;
+  left: auto;
+  transform: none;
+  margin: 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .page-controls,
 .page-actions {
   position: absolute;
   top: 3px;
-  z-index: 3;
+  z-index: 20;
   display: flex;
-  gap: 1px;
+  align-items: center;
+  gap: 2px;
 }
 
 .page-actions {
   right: 8px;
+}
+
+.page-actions-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--hairline);
+  flex: none;
 }
 
 .page-controls .icon-button,
@@ -749,6 +1302,76 @@ textarea:focus-visible {
 .page-actions .icon-button:hover,
 .page-actions .icon-button[aria-expanded='true'] {
   color: var(--label);
+}
+
+.cat-selector-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--label-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.cat-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.cat-selector-btn:hover,
+.cat-selector-btn[aria-expanded='true'],
+.cat-dropdown > .cat-selector-btn:hover,
+.cat-dropdown > .cat-selector-btn[aria-expanded='true'],
+.page-actions .menu > .cat-selector-btn:hover,
+.page-actions .menu > .cat-selector-btn[aria-expanded='true'] {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.cat-dropdown > .cat-selector-btn,
+.page-actions .menu > .cat-selector-btn {
+  color: var(--label-2);
+}
+
+.cat-selector-btn.icon-only {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.cat-selector-name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--label);
+}
+
+.cat-selector-arrow {
+  flex: none;
+  opacity: 0.6;
+}
+
+.cat-selector-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.cat-selector-dot.unset-dot {
+  border: 1.5px dashed var(--label-3);
+  background: none;
 }
 
 /* La tapa y la contratapa del cuaderno cerrado están en styles/cover.css. */
@@ -1022,12 +1645,49 @@ input:not([type='color']):not([type='search']):focus {
   z-index: 30;
   min-width: 224px;
   max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 42px);
   padding: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 86%, transparent);
   backdrop-filter: saturate(180%) blur(24px);
   box-shadow: var(--shadow-pop);
   animation: pop 0.12s ease-out;
+}
+
+.menu-list.above {
+  top: auto;
+  bottom: calc(100% + 6px);
+  animation-name: pop-up;
+}
+
+.menu-list.above.leaving {
+  animation: pop-out-up 0.11s ease-in forwards;
+}
+
+.menu-list.compact {
+  padding: 3px;
+}
+
+.menu-list.compact .menu-item {
+  height: 21px;
+  font-size: 12px;
+}
+
+.menu-list.compact .menu-row {
+  height: 24px;
+  font-size: 12px;
+}
+
+.menu-list.compact .menu-item.separated,
+.menu-list.compact .menu-row.separated {
+  margin-top: 4px;
+}
+
+.menu-list.compact .menu-item.separated::before,
+.menu-list.compact .menu-row.separated::before {
+  top: -2.5px;
 }
 
 .menu-list.leaving,
@@ -1169,6 +1829,76 @@ input:not([type='color']):not([type='search']):focus {
 
 .menu-item:hover kbd {
   color: color-mix(in srgb, var(--on-accent) 75%, transparent);
+}
+
+.menu-collapsible-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-collapsible-group.separated {
+  margin-top: 9px;
+}
+
+.menu-collapsible-group.separated::before {
+  position: absolute;
+  top: -5px;
+  right: 6px;
+  left: 6px;
+  height: 0.5px;
+  background: var(--hairline);
+  content: '';
+}
+
+.menu-list.compact .menu-collapsible-group.separated {
+  margin-top: 4px;
+}
+
+.menu-list.compact .menu-collapsible-group.separated::before {
+  top: -2.5px;
+}
+
+.menu-collapsible-content {
+  display: flex;
+  flex-direction: column;
+  padding-left: 4px;
+  margin-left: 6px;
+  border-left: 1px solid var(--hairline);
+  margin-top: 2px;
+  margin-bottom: 2px;
+  animation: fade 0.15s ease-out;
+}
+
+.menu-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--label-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.menu-item:hover .menu-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+}
+
+.menu-check {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.menu-badge + .menu-check {
+  margin-left: 6px;
+}
+
+.menu-item:hover .menu-check {
+  color: var(--on-accent);
 }
 
 /* ---- hojas modales ----------------------------------------------------- */
@@ -1406,6 +2136,188 @@ input:not([type='color']):not([type='search']):focus {
 }
 
 /* ---- ajustes ----------------------------------------------------------- */
+
+.settings-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.settings-search-bar {
+  display: flex;
+  flex: none;
+  padding: 0 20px 14px;
+}
+
+.settings-window .settings-search-bar {
+  padding-top: 14px;
+}
+
+.settings-search {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  border-radius: 9px;
+  background: var(--fill);
+  transition: box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.settings-search input {
+  font-size: 13.5px;
+}
+
+.settings-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fill-strong);
+  color: var(--label-2);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-search-clear:hover {
+  background: var(--label-3);
+  color: var(--on-accent, #fff);
+}
+
+mark.settings-search-highlight {
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 0;
+  margin: 0;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.settings-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+
+.settings-search-row {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.settings-search-row .row-text {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.settings-search-row .row-control {
+  flex-shrink: 0;
+}
+
+.settings-search-row:hover {
+  background: var(--fill);
+}
+
+.settings-search-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.settings-search-item-label {
+  font-weight: 550;
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-search-item-group {
+  color: var(--label-3);
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.settings-search-keyword-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--label-3);
+}
+
+.settings-open-full-section-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 6px 0 0 14px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-open-full-section-btn:hover {
+  filter: brightness(0.9);
+}
+
+.settings-no-results {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  gap: 8px;
+  margin: auto 0;
+}
+
+.settings-no-results-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--label-3);
+  margin-bottom: 6px;
+}
+
+.settings-no-results h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--label);
+}
+
+.settings-no-results p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--label-2);
+  max-width: 380px;
+  line-height: 1.45;
+}
+
+.settings-no-results-hint {
+  font-size: 12px;
+  color: var(--label-3);
+}
+
+.settings-no-results .button {
+  margin-top: 8px;
+}
 
 .settings-layout {
   display: flex;
@@ -2204,6 +3116,56 @@ kbd.keys {
   height: 100%;
   background: var(--paper);
   box-shadow: inset 0 0 0 1px var(--paper-edge);
+  transition: box-shadow 0.15s ease;
+}
+
+.loose.is-editing {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, var(--paper-edge)),
+    0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.loose.is-editing .loose-head {
+  border-bottom: 0.5px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.loose-edit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--label-3);
+  background: var(--fill);
+  letter-spacing: 0.01em;
+  user-select: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.loose-edit-badge:hover {
+  background: var(--fill-hover, var(--fill-strong));
+}
+
+.loose-edit-badge.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.loose-edit-badge.saving {
+  color: var(--warn, #a14a00);
+  background: var(--warn-bg, rgba(255, 149, 0, 0.16));
+}
+
+.loose-edit-icon {
+  flex-shrink: 0;
 }
 
 .loose::before {
@@ -2263,6 +3225,28 @@ kbd.keys {
   color: var(--label-3);
 }
 
+.loose-text.read-mode {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  cursor: grab;
+  user-select: text;
+}
+
+.loose-text.read-mode:active {
+  cursor: grabbing;
+}
+
+.loose-text.read-mode:focus-visible {
+  outline: none;
+}
+
+.loose-text.read-mode .loose-placeholder {
+  color: var(--label-3);
+  font-style: italic;
+  pointer-events: none;
+}
+
 .loose .form-error {
   margin: 4px 18px 0 62px;
 }
@@ -2293,6 +3277,125 @@ kbd.keys {
 
 .loose .icon-button:disabled {
   opacity: 0.35;
+}
+
+html[data-window='capture'],
+html[data-window='capture'] body,
+html[data-window='capture'] #root,
+html[data-window='tearoff'],
+html[data-window='tearoff'] body,
+html[data-window='tearoff'] #root {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.capture-head-tools .icon-button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  color: var(--label-3);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.capture-head-tools .icon-button:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.capture-head-tools .capture-pin-btn.pinned {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.capture-head-tools .capture-pin-btn.pinned:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.capture-head-tools .capture-pin-btn.pinned svg {
+  transform: rotate(35deg);
+  transition: transform 0.2s ease;
+}
+
+/* ---- dock de hoja suelta colapsada (Loose Sheet Dock) ------------------- */
+
+.loose-dock {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--paper);
+  border-radius: 10px;
+  border: 1.5px solid var(--paper-edge);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: grab;
+  user-select: none;
+  overflow: hidden;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.loose-dock:hover {
+  background: color-mix(in srgb, var(--paper) 93%, var(--accent));
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.loose-dock:active {
+  cursor: grabbing;
+}
+
+.loose-dock::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 2px;
+  background: var(--margin-line);
+  content: '';
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+.loose-dock-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  color: var(--label-2);
+  transition: color 0.15s ease;
+  pointer-events: none;
+}
+
+.loose-dock-icon {
+  flex-shrink: 0;
+}
+
+.loose-dock:hover .loose-dock-inner {
+  color: var(--accent);
+}
+
+.loose-dock-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--paper);
+  pointer-events: none;
 }
 
 /* ---- movimiento -------------------------------------------------------- */
@@ -2529,6 +3632,12 @@ kbd.keys {
     border-top: 0.5px solid var(--hairline);
   }
 
+  .settings-layout[data-no-tabs='true'] {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+  }
+
   .settings-window .settings-layout {
     border-top: 0;
   }
@@ -2734,14 +3843,6 @@ kbd.keys {
 }
 
 /* ---- interacción del cuaderno ---- */
-
-/* Los controles del encabezado de la hoja quedan por encima de las franjas de pasar
-   página: si llegan hasta un borde, el clic sigue siendo de ellos. */
-.page-head .chip,
-.page-head .menu {
-  position: relative;
-  z-index: 3;
-}
 
 /* Botones de los carteles de arriba: ícono y texto en una línea, y la tecla del atajo
    escrita al lado, más tenue. */
@@ -3051,6 +4152,12 @@ kbd.keys {
   color: var(--label-3);
   padding: 40px 20px;
   font-size: 13px;
+}
+
+.sheet-map-sentinel {
+  height: 20px;
+  width: 100%;
+  pointer-events: none;
 }
 
 .sheet-map-grid {

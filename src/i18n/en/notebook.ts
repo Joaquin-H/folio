@@ -3,6 +3,13 @@ export const notebook: Record<string, string> = {
   // CaptureWindow.tsx
   'Nueva hoja': 'New sheet',
   'Sin título': 'Untitled',
+  'Colapsar hoja': 'Collapse sheet',
+  'Colapsar en el dock': 'Collapse into dock',
+  'Fijar expandida': 'Pin expanded',
+  'Fijar expandida para comparar con otras ventanas': 'Pin expanded to compare with other windows',
+  'Desfijar hoja (se colapsa al cambiar de ventana)': 'Unpin sheet (collapses when switching windows)',
+  'Expandir hoja suelta': 'Expand loose sheet',
+  'Clic para expandir': 'Click to expand',
   'Dictar con la voz (Win + H)': 'Dictate with voice (Win + H)',
   'Dictar con la voz': 'Dictate with voice',
   'Cambiar el título de la hoja': 'Change the sheet title',
@@ -48,6 +55,7 @@ export const notebook: Record<string, string> = {
   'Cerrar el cuaderno': 'Close the notebook',
   Guardado: 'Saved',
   'Guardando…': 'Saving…',
+  Editando: 'Editing',
   'Sin guardar': 'Unsaved',
   'Volver a escribir (Ctrl + P)': 'Back to editing (Ctrl + P)',
   'Previsualizar (Ctrl + P)': 'Preview (Ctrl + P)',
@@ -102,6 +110,10 @@ export const notebook: Record<string, string> = {
   'Texto de {title}': 'Text of {title}',
   'Página anterior ({hint})': 'Previous page ({hint})',
   'Página siguiente ({hint})': 'Next page ({hint})',
+
+
+  'Hoja anterior ({hint})': 'Previous sheet ({hint})',
+  'Hoja siguiente ({hint})': 'Next sheet ({hint})',
   'Hoja {n} de {total}': 'Sheet {n} of {total}',
   'Hoja {n}': 'Sheet {n}',
   'Ir a la primera hoja': 'Go to first sheet',
@@ -110,6 +122,17 @@ export const notebook: Record<string, string> = {
   'El primer recorrido del disco puede tardar un momento.': 'The first disk scan may take a moment.',
 
   // sheet.tsx
+  'Arrancar': 'Tear off',
+  'Arrancar hoja': 'Tear off sheet',
+  'Devolver al cuaderno': 'Return to notebook',
+  'Devuelta al cuaderno': 'Returned to notebook',
+  'Hoja flotante': 'Floating sheet',
+  'Fijar hoja': 'Pin sheet',
+  'Desfijar hoja': 'Unpin sheet',
+  'Fijar esta hoja': 'Pin this sheet',
+  'Desfijar esta hoja': 'Unpin this sheet',
+  'Fijada': 'Pinned',
+  'Fijar': 'Pin',
   'en {folder}': 'in {folder}',
   'Bloc de notas, pestaña cerrada': 'Notepad, closed tab',
   'Bloc de notas, sin guardar': 'Notepad, unsaved',
@@ -137,6 +160,12 @@ export const notebook: Record<string, string> = {
   'No se pudo guardar la imagen en esta PC.': 'Couldn’t save the image on this PC.',
 
   // App.tsx
+  'Sin hojas hoy': 'No sheets today',
+  'Las hojas que crees o edites hoy aparecen acá.': 'Sheets you create or edit today appear here.',
+  'Sin hojas fijas': 'No pinned sheets',
+  'Fijá cualquier hoja desde su encabezado para tenerla siempre a mano acá.': 'Pin any sheet from its header to keep it always at hand here.',
+  Fijas: 'Pinned',
+  Recortes: 'Clippings',
   'Escribí en el Bloc de notas o guardá un .txt o .md: va a aparecer acá solo.':
     'Write in Notepad or save a .txt or .md: it will appear here on its own.',
   'Todo tiene categoría': 'Everything has a category',
@@ -173,4 +202,10 @@ export const notebook: Record<string, string> = {
   'Todas ({total})': 'All ({total})',
   'No hay hojas que coincidan con este filtro.': 'No sheets match this filter.',
   'Hoja sin contenido adicional': 'Sheet without additional content',
+
+  // Menú y selector de categorías
+  'Más opciones…': 'More options…',
+  'Menos opciones…': 'Fewer options…',
+  'Cambiar categoría o vista': 'Change category or view',
+  'Categorías y vistas': 'Categories and views',
 };

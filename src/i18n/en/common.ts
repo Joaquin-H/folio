@@ -11,6 +11,8 @@ export const common: Record<string, string> = {
   imágenes: 'images',
   'versión anterior': 'previous version',
   'versiones anteriores': 'previous versions',
+  'Hoja anterior': 'Previous sheet',
+  'Hoja siguiente': 'Next sheet',
 
   // Fechas y tiempo (format.ts)
   Hoy: 'Today',
@@ -23,6 +25,7 @@ export const common: Record<string, string> = {
   // Botones y diálogos (ui.tsx)
   Cancelar: 'Cancel',
   Cerrar: 'Close',
+  Minimizar: 'Minimize',
   'Abrir en una ventana aparte': 'Open in a separate window',
   Listo: 'Done',
   Menos: 'Decrease',

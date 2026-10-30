@@ -20,6 +20,7 @@ pub struct SheetSummary {
     pub hidden: bool,
     pub missing: bool,
     pub version_count: i64,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -42,16 +43,17 @@ pub struct SheetDetail {
     pub versions: Vec<Version>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ListFilter {
-    /// "all" | "uncategorized" | "secret" | "hidden" | "category"
+    /// "all" | "today" | "pinned" | "uncategorized" | "secret" | "hidden" | "category"
     pub view: String,
     pub category_id: Option<i64>,
     pub query: Option<String>,
     /// Cursor de paginación: la última hoja ya cargada.
     pub before_ts: Option<i64>,
     pub before_id: Option<i64>,
+    pub before_pinned: Option<bool>,
     /// "Ir a fecha": solo hojas modificadas hasta este instante (ms).
     pub until: Option<i64>,
     pub limit: Option<i64>,
@@ -71,6 +73,8 @@ pub struct Category {
 #[serde(rename_all = "camelCase")]
 pub struct Counts {
     pub all: i64,
+    pub today: i64,
+    pub pinned: i64,
     pub uncategorized: i64,
     pub secret: i64,
     pub hidden: i64,
@@ -144,6 +148,8 @@ pub struct Overview {
     pub jev: JevStatus,
     /// Carpeta donde Book guarda, como archivos de texto, las hojas que se escriben en él.
     pub notes_dir: String,
+    pub clippings_category_id: Option<i64>,
+    pub untagged_clippings_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -267,6 +273,30 @@ pub struct FolderStat {
 pub struct DayCount {
     pub day: String,
     pub count: i64,
+}
+
+/// Estado persistido de una hoja arrancada del cuaderno para restaurarla al reabrir Folio.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TornOffSheetState {
+    pub id: i64,
+    pub collapsed: bool,
+    pub pinned: bool,
+    pub expanded_x: Option<f64>,
+    pub expanded_y: Option<f64>,
+    pub collapsed_x: Option<f64>,
+    pub collapsed_y: Option<f64>,
+}
+
+/// Posición y tamaño lógicos de una ventana flotante (hoja suelta o arrancada).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FloatingRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub collapsed: bool,
 }
 
 #[cfg(test)]

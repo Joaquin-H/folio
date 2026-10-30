@@ -4,6 +4,9 @@ import { dayHeading } from '../format';
 import { useT } from '../i18n';
 import type { Category, SheetSummary } from '../types';
 
+const INITIAL_BATCH = 60;
+const BATCH_SIZE = 60;
+
 export function SheetMapModal(props: {
   open: boolean;
   onClose: () => void;
@@ -18,6 +21,9 @@ export function SheetMapModal(props: {
   const [query, setQuery] = useState('');
   const [filterCat, setFilterCat] = useState<number | 'all' | 'none'>('all');
   const activeCardRef = useRef<HTMLButtonElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const hasScrolledRef = useRef(false);
 
   // Mapeo rápido de categorías por ID
   const catMap = useMemo(() => {
@@ -53,14 +59,75 @@ export function SheetMapModal(props: {
       });
   }, [sheets, filterCat, query, catMap]);
 
+  // Cantidad inicial de tarjetas para que la tarjeta activa esté renderizada al abrir
+  const defaultCount = useMemo(() => {
+    if (query.trim()) return INITIAL_BATCH;
+    const activeVisibleIndex = visibleSheets.findIndex((item) => item.index === currentIndex);
+    if (activeVisibleIndex >= 0) {
+      return Math.max(INITIAL_BATCH, activeVisibleIndex + 20);
+    }
+    return INITIAL_BATCH;
+  }, [query, currentIndex, visibleSheets]);
+
+  const [renderedCount, setRenderedCount] = useState(INITIAL_BATCH);
+
+  // Al cambiar el default (por cambio en búsqueda, categoría o lista de hojas), reseteamos renderedCount
+  useEffect(() => {
+    setRenderedCount(defaultCount);
+  }, [defaultCount]);
+
+  // Carga incremental al hacer scroll hacia el final
+  const hasMore = renderedCount < visibleSheets.length;
+
+  useEffect(() => {
+    if (!open || !hasMore) return;
+    const sentinel = sentinelRef.current;
+    const body = bodyRef.current;
+    if (!sentinel || !body) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setRenderedCount((prev) => Math.min(visibleSheets.length, prev + BATCH_SIZE));
+        }
+      },
+      {
+        root: body,
+        rootMargin: '400px',
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [open, hasMore, visibleSheets.length]);
+
+  // Reset del indicador de scroll al cerrar el modal
+  useEffect(() => {
+    if (!open) {
+      hasScrolledRef.current = false;
+    }
+  }, [open]);
+
   // Auto-scroll a la tarjeta activa al abrir o cambiar filtro
   useEffect(() => {
     if (!open) return;
     const timer = window.setTimeout(() => {
-      activeCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (activeCardRef.current) {
+        activeCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        hasScrolledRef.current = true;
+      }
     }, 120);
     return () => window.clearTimeout(timer);
   }, [open, filterCat]);
+
+  // Si las hojas se terminaron de cargar después del timeout inicial, scrollear una vez
+  useEffect(() => {
+    if (!open || hasScrolledRef.current) return;
+    if (activeCardRef.current) {
+      activeCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      hasScrolledRef.current = true;
+    }
+  }, [open, visibleSheets]);
 
   // Atajos de teclado (Esc para cerrar)
   useEffect(() => {
@@ -76,6 +143,8 @@ export function SheetMapModal(props: {
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const renderedSheets = visibleSheets.slice(0, renderedCount);
 
   return (
     <div className="sheet-map-overlay" role="dialog" aria-modal="true" aria-label={t('Mapa del cuaderno')}>
@@ -163,64 +232,67 @@ export function SheetMapModal(props: {
         </div>
 
         {/* Grilla de Hojas en Miniatura */}
-        <div className="sheet-map-body">
+        <div className="sheet-map-body" ref={bodyRef}>
           {visibleSheets.length === 0 ? (
             <p className="sheet-map-empty">{t('No hay hojas que coincidan con este filtro.')}</p>
           ) : (
-            <div className="sheet-map-grid">
-              {visibleSheets.map(({ sheet, index }) => {
-                const isCurrent = index === currentIndex;
-                const cat = sheet.categoryId !== null ? catMap.get(sheet.categoryId) : undefined;
-                return (
-                  <button
-                    key={sheet.id}
-                    ref={isCurrent ? activeCardRef : null}
-                    type="button"
-                    className={`sheet-map-card${isCurrent ? ' current' : ''}`}
-                    onClick={() => {
-                      onSelectSheet(index);
-                      onClose();
-                    }}
-                  >
-                    {/* Encabezado de la tarjeta */}
-                    <div className="sheet-map-card-head">
-                      <span className="sheet-map-card-num">#{index + 1}</span>
-                      {cat ? (
-                        <span className="sheet-map-card-cat" style={{ color: cat.color }}>
-                          <span className="sheet-map-cat-dot" style={{ backgroundColor: cat.color }} />
-                          {cat.name}
-                        </span>
-                      ) : (
-                        <span className="sheet-map-card-cat muted">
-                          {t('Sin categoría')}
-                        </span>
-                      )}
-                      {isCurrent && <span className="sheet-map-active-badge">{t('Actual')}</span>}
-                    </div>
+            <>
+              <div className="sheet-map-grid">
+                {renderedSheets.map(({ sheet, index }) => {
+                  const isCurrent = index === currentIndex;
+                  const cat = sheet.categoryId !== null ? catMap.get(sheet.categoryId) : undefined;
+                  return (
+                    <button
+                      key={sheet.id}
+                      ref={isCurrent ? activeCardRef : null}
+                      type="button"
+                      className={`sheet-map-card sheet-card${isCurrent ? ' current' : ''}`}
+                      onClick={() => {
+                        onSelectSheet(index);
+                        onClose();
+                      }}
+                    >
+                      {/* Encabezado de la tarjeta */}
+                      <div className="sheet-map-card-head">
+                        <span className="sheet-map-card-num">#{index + 1}</span>
+                        {cat ? (
+                          <span className="sheet-map-card-cat" style={{ color: cat.color }}>
+                            <span className="sheet-map-cat-dot" style={{ backgroundColor: cat.color }} />
+                            {cat.name}
+                          </span>
+                        ) : (
+                          <span className="sheet-map-card-cat muted">
+                            {t('Sin categoría')}
+                          </span>
+                        )}
+                        {isCurrent && <span className="sheet-map-active-badge">{t('Actual')}</span>}
+                      </div>
 
-                    {/* Título de la nota */}
-                    <div className="sheet-map-card-title" title={sheet.title}>
-                      {sheet.title}
-                    </div>
+                      {/* Título de la nota */}
+                      <div className="sheet-map-card-title" title={sheet.title}>
+                        {sheet.title}
+                      </div>
 
-                    {/* Fecha */}
-                    <div className="sheet-map-card-date">
-                      {sheet.modifiedAt
-                        ? (() => {
-                            const h = dayHeading(sheet.modifiedAt);
-                            return `${h.title}, ${h.subtitle}`;
-                          })()
-                        : ''}
-                    </div>
+                      {/* Fecha */}
+                      <div className="sheet-map-card-date">
+                        {sheet.modifiedAt
+                          ? (() => {
+                              const h = dayHeading(sheet.modifiedAt);
+                              return `${h.title}, ${h.subtitle}`;
+                            })()
+                          : ''}
+                      </div>
 
-                    {/* Vista previa / extracto de texto */}
-                    <div className="sheet-map-card-preview">
-                      {sheet.preview.trim() || t('Hoja sin contenido adicional')}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                      {/* Vista previa / extracto de texto */}
+                      <div className="sheet-map-card-preview">
+                        {sheet.preview.trim() || t('Hoja sin contenido adicional')}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {hasMore && <div ref={sentinelRef} className="sheet-map-sentinel" aria-hidden="true" />}
+            </>
           )}
         </div>
       </div>

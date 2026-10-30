@@ -141,6 +141,12 @@ export const settings: Record<string, string> = {
   'Color de la categoría nueva': 'New category color',
   'Nombre de la categoría nueva': 'New category name',
   'Nueva categoría': 'New category',
+  'Recortes organizados': 'Clippings organized',
+  'Se asignaron {n} recortes a la categoría Recortes.': 'Assigned {n} clippings to the Clippings category.',
+  'Organizar recortes existentes': 'Organize existing clippings',
+  'Se encontraron {n} recortes sin categorizar. Podés moverlos automáticamente a la categoría Recortes.':
+    'Found {n} uncategorized clippings. You can automatically move them to the Clippings category.',
+  'Asignar a Recortes': 'Assign to Clippings',
 
   // CoverOptions.tsx
   Lisa: 'Plain',
@@ -225,7 +231,22 @@ export const settings: Record<string, string> = {
   'Solapas de categorías': 'Category tabs',
   'Asoman arriba del cuaderno y filtran las hojas. Si las ocultás, se filtra desde Buscar y filtrar.':
     'They peek out above the notebook and filter pages. If hidden, filter using Search & filter.',
+  'Borde de ventana': 'Window border',
+  'Ninguno muestra solo el cuaderno sin margen alrededor. Transparente deja flotar el cuaderno sobre el escritorio; Sólido usa un marco opaco.':
+    'None shows only the notebook with no outer margin. Transparent lets the notebook float over the desktop; Solid uses an opaque frame.',
+  Ninguno: 'None',
+  Transparente: 'Transparent',
+  Sólido: 'Solid',
+  'Cuaderno sin marco': 'Borderless notebook',
+  'Elimina el fondo de la ventana para que solo se vea el cuaderno flotando sobre el escritorio.':
+    'Removes the window background so only the notebook floats over the desktop.',
   'Ver los .md con formato': 'Render formatted .md',
+  'Ocultar encabezado': 'Hide header',
+  'Oculta el título, la fecha y los datos de la hoja para dejar más espacio al texto.':
+    'Hides the title, date, and sheet metadata to leave more room for text.',
+  'Centrar título de la hoja': 'Center sheet title',
+  'Ubica el título en el centro de la hoja en lugar de alinearlo a la izquierda.':
+    'Positions the title at the center of the sheet instead of left-aligned.',
   'Títulos, listas, tareas y tablas, sobre el rayado. Al escribir se ve el texto plano, que es lo que se guarda.':
     'Headings, lists, tasks, and tables rendered over the ruled lines. While typing, plain text is shown, which is what gets saved.',
   General: 'General',
@@ -239,9 +260,12 @@ export const settings: Record<string, string> = {
   // shortcuts.ts
   'Página siguiente': 'Next page',
   'Página anterior': 'Previous page',
+
+
   'Primera hoja': 'First page',
   'Última hoja': 'Last page',
   'Escribir en la hoja': 'Write on page',
+  'Abre la hoja actual en una ventana flotante independiente.': 'Opens the current sheet in an independent floating window.',
   'Hoja nueva': 'New page',
   'Volver de la papelera o del secret-book': 'Return from trash or secret-book',
   'Dar vuelta el cuaderno': 'Flip the notebook',
@@ -413,4 +437,42 @@ export const settings: Record<string, string> = {
   'Formato de notas nuevas': 'New notes format',
   'Guardar las notas creadas en Folio como archivos .txt o .md con formato Markdown.':
     'Save notes created in Folio as .txt or Markdown-formatted .md files.',
+
+  // Buscador de ajustes
+  'Buscar en ajustes…': 'Search settings…',
+  'Buscar en ajustes': 'Search settings',
+  'Limpiar búsqueda': 'Clear search',
+  'Limpiar búsqueda (Esc)': 'Clear search (Esc)',
+  'Secciones coincidentes': 'Matching sections',
+  'No se encontraron ajustes para «{query}».': 'No settings found matching “{query}”.',
+  'Probá con otros términos como tema, marco, atajos, carpetas o sonido.':
+    'Try other terms like theme, borderless, shortcuts, folders, or sounds.',
+  'Abrir sección completa {name}': 'Open full {name} section',
+  'Palabra clave:': 'Keyword:',
+  'Ir al ajuste {label}': 'Go to setting {label}',
+  Abrir: 'Open',
+  'Color de la categoría': 'Category color',
+  'Quita el marco exterior y la barra de título de la ventana para una apariencia limpia (borderless).':
+    'Removes the outer window frame and title bar for a clean, borderless appearance.',
+  'Enter o F2 para comenzar a escribir en la hoja abierta.':
+    'Enter or F2 to start writing on the open sheet.',
+  'Ctrl+N para agregar una hoja nueva en blanco.':
+    'Ctrl+N to add a new blank sheet.',
+  'Ctrl+F para buscar texto en todas las hojas o filtrar por separador.':
+    'Ctrl+F to search text across all sheets or filter by divider.',
+  'Ctrl+Alt+B: atajo global para traer Folio al frente desde cualquier programa.':
+    'Ctrl+Alt+B: global shortcut to bring Folio to front from any program.',
+  'Ctrl+Alt+N: atajo global para abrir la captura rápida.':
+    'Ctrl+Alt+N: global shortcut to open quick capture.',
+  'Sugerir categorías': 'Suggest categories',
+  'La IA sugiere categorías nuevas a partir del contenido de tus notas.':
+    'AI suggests new categories based on your notes’ content.',
+  'Ollama (local)': 'Ollama (local)',
+  'Clave de la API': 'API key',
+  'Conectar Folio con herramientas y asistentes de IA.':
+    'Connect Folio with AI tools and coding assistants.',
+  'Las notas nuevas o modificadas se clasifican solas en segundo plano.':
+    'New or modified notes are automatically classified in the background.',
+  'Archivos que desaparecieron de las carpetas que Folio recorre.':
+    'Files that disappeared from folders Folio scans.',
 };

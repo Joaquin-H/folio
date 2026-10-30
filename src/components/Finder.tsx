@@ -36,14 +36,23 @@ export function Finder(props: {
 }) {
   const t = useT();
   const counts = props.overview?.counts;
+  const categories = props.overview?.categories ?? [];
+  const clippingsId = props.overview?.clippingsCategoryId;
+  const sortedCategories = [...categories].sort((a, b) => {
+    if (a.id === clippingsId) return -1;
+    if (b.id === clippingsId) return 1;
+    return 0;
+  });
   const dividers: Divider[] = [
     // «Todas» lleva el color del cuaderno, con el texto que le corresponde encima.
     { key: 'all', view: { kind: 'all' }, label: t('Todas'), count: counts?.all ?? 0, color: 'var(--accent)', ink: 'var(--on-accent, #fff)' },
+    { key: 'today', view: { kind: 'today' }, label: t('Hoy'), count: counts?.today ?? 0, color: '#4e4b47' },
+    { key: 'pinned', view: { kind: 'pinned' }, label: t('Fijas'), count: counts?.pinned ?? 0, color: '#494d58' },
     { key: 'uncategorized', view: { kind: 'uncategorized' }, label: t('Sin categoría'), count: counts?.uncategorized ?? 0, color: '#8E8E93' },
-    ...(props.overview?.categories ?? []).map<Divider>((category) => ({
+    ...sortedCategories.map<Divider>((category) => ({
       key: `category-${category.id}`,
       view: { kind: 'category', id: category.id },
-      label: category.name,
+      label: category.id === clippingsId || category.name === 'Recortes' ? t('Recortes') : category.name,
       count: category.count,
       color: category.color,
     })),

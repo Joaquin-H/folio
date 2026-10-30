@@ -1,6 +1,7 @@
 // Datos y acciones de una hoja, separados de cómo se dibuja en el cuaderno.
 import { useEffect, useState } from 'react';
 import {
+  ExternalLink,
   EyeOff,
   FileText,
   FolderOpen,
@@ -8,6 +9,8 @@ import {
   LockOpen,
   NotebookPen,
   PenLine,
+  Pin,
+  PinOff,
   SquareArrowOutUpRight,
   StickyNote,
   Undo2,
@@ -15,6 +18,7 @@ import {
 import { api } from '../api';
 import { parentFolder } from '../format';
 import { quote, t, useT } from '../i18n';
+import { hintOf } from '../shortcuts';
 import type { Category, SheetDetail, SheetSummary, Source } from '../types';
 import { Confirm, Presence, type MenuItem } from './ui';
 
@@ -49,17 +53,51 @@ export function useSheetDetail(sheet: SheetSummary | undefined, enabled = true):
   const [detail, setDetail] = useState<SheetDetail | null>(null);
   const id = sheet?.id;
   const stamp = sheet ? `${sheet.modifiedAt}:${sheet.versionCount}` : '';
+
   useEffect(() => {
     if (id === undefined || !enabled) return;
     let alive = true;
+    let coalescingTimer: number | null = null;
+    let inFlight: Promise<SheetDetail | null> | null = null;
+
+    const fetchFresh = () => {
+      if (!alive) return;
+      if (coalescingTimer !== null) return;
+      coalescingTimer = window.setTimeout(() => {
+        coalescingTimer = null;
+        if (!alive) return;
+        if (inFlight) return;
+        inFlight = api
+          .getSheet(id)
+          .then((result) => {
+            if (alive) setDetail(result);
+            return result;
+          })
+          .catch(() => null)
+          .finally(() => {
+            inFlight = null;
+          });
+      }, 16);
+    };
+
     api
       .getSheet(id)
       .then((result) => alive && setDetail(result))
       .catch(() => {});
+
+    const stopClip = api.onClippingSaved((payload) => {
+      if (!payload.sheetId || payload.sheetId === id) {
+        fetchFresh();
+      }
+    });
+
     return () => {
       alive = false;
+      if (coalescingTimer !== null) window.clearTimeout(coalescingTimer);
+      stopClip();
     };
   }, [id, stamp, enabled]);
+
   return detail && detail.id === id ? detail : null;
 }
 
@@ -103,9 +141,51 @@ export function useSheetMenus(
     },
   ];
 
-  const moreItems: MenuItem[] = [];
+  const togglePinned = () => run(api.setSheetPinned(sheet.id, !sheet.pinned));
+  const tearOff = () => run(api.tearOffSheet(sheet.id, false));
+
+  const secretItem: MenuItem = sheet.secret
+    ? {
+        label: t('Quitar del secret-book'),
+        icon: <LockOpen size={14} />,
+        separator: true,
+        onSelect: () => run(api.setSheetSecret(sheet.id, false)),
+      }
+    : {
+        label: t('Mover al secret-book'),
+        icon: <Lock size={14} />,
+        separator: true,
+        onSelect: () => run(api.setSheetSecret(sheet.id, true)),
+      };
+
+  const trashItem: MenuItem = sheet.hidden
+    ? {
+        label: t('Sacar de la papelera'),
+        icon: <Undo2 size={14} />,
+        onSelect: () => run(api.setSheetHidden(sheet.id, false)),
+      }
+    : {
+        label: t('Mover a la papelera'),
+        icon: <EyeOff size={14} />,
+        danger: true,
+        onSelect: () => setAskTrash(true),
+      };
+
+  const actionItems: MenuItem[] = [
+    {
+      label: t('Arrancar hoja'),
+      icon: <ExternalLink size={14} />,
+      hint: hintOf('tear-off'),
+      onSelect: tearOff,
+    },
+    {
+      label: sheet.pinned ? t('Desfijar hoja') : t('Fijar hoja'),
+      icon: sheet.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+      onSelect: togglePinned,
+    },
+  ];
   if (sheet.path && !sheet.missing) {
-    moreItems.push(
+    actionItems.push(
       {
         label: t('Abrir el original'),
         icon: <SquareArrowOutUpRight size={14} />,
@@ -118,34 +198,8 @@ export function useSheetMenus(
       },
     );
   }
-  moreItems.push(
-    sheet.secret
-      ? {
-          label: t('Quitar del secret-book'),
-          icon: <LockOpen size={14} />,
-          separator: moreItems.length > 0,
-          onSelect: () => run(api.setSheetSecret(sheet.id, false)),
-        }
-      : {
-          label: t('Mover al secret-book'),
-          icon: <Lock size={14} />,
-          separator: moreItems.length > 0,
-          onSelect: () => run(api.setSheetSecret(sheet.id, true)),
-        },
-    sheet.hidden
-      ? {
-          label: t('Sacar de la papelera'),
-          icon: <Undo2 size={14} />,
-          onSelect: () => run(api.setSheetHidden(sheet.id, false)),
-        }
-      : {
-          label: t('Mover a la papelera'),
-          icon: <EyeOff size={14} />,
-          danger: true,
-          // Un clic de más en el menú no alcanza para sacar una hoja del cuaderno.
-          onSelect: () => setAskTrash(true),
-        },
-  );
+
+  const moreItems: MenuItem[] = [...actionItems, secretItem, trashItem];
 
   const dialogs = (
     <Presence show={askTrash} exitMs={CONFIRM_OUT}>
@@ -172,8 +226,13 @@ export function useSheetMenus(
 
   return {
     categoryItems,
+    secretItem,
+    trashItem,
+    actionItems,
     moreItems,
     error,
+    togglePinned,
+    tearOff,
     /** Saca la hoja de la papelera. */
     restore: () => run(api.setSheetHidden(sheet.id, false)),
     dialogs,
@@ -186,12 +245,25 @@ export function SheetBadges(props: { sheet: SheetSummary }) {
   const { sheet } = props;
   return (
     <>
-      {sheet.source === 'file' && sheet.missing && <span className="badge warn">{t('Original eliminado')}</span>}
-      {sheet.secret && sheet.secretSource === 'auto' && <span className="badge warn">{t('Detectada como sensible')}</span>}
+      {sheet.source === 'file' && sheet.missing && (
+        <>
+          <span className="meta-sep" aria-hidden="true">·</span>
+          <span className="badge warn">{t('Original eliminado')}</span>
+        </>
+      )}
+      {sheet.secret && sheet.secretSource === 'auto' && (
+        <>
+          <span className="meta-sep" aria-hidden="true">·</span>
+          <span className="badge warn">{t('Detectada como sensible')}</span>
+        </>
+      )}
       {sheet.categorySource === 'jev' && sheet.categoryConfidence !== null && (
-        <span className="badge" title={t('Confianza de la IA que eligió la categoría')}>
-          {t('IA {percent}%', { percent: Math.round(sheet.categoryConfidence * 100) })}
-        </span>
+        <>
+          <span className="meta-sep" aria-hidden="true">·</span>
+          <span className="badge" title={t('Confianza de la IA que eligió la categoría')}>
+            {t('IA {percent}%', { percent: Math.round(sheet.categoryConfidence * 100) })}
+          </span>
+        </>
       )}
     </>
   );

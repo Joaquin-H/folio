@@ -196,10 +196,7 @@ for (const spread of ['double', 'single']) {
       check(spiral.left > book.left + book.width / 2, 'vista de atrás, la espiral tiene que quedar a la derecha');
     }
 
-    // Desde la contratapa, avanzar no hace nada y volver lo abre donde estaba.
-    await page.key('ArrowRight');
-    await sleep(500);
-    equal(await face(page), 'back', 'la flecha derecha no tenía que abrir el cuaderno desde la contratapa');
+    // Desde la contratapa, una flecha abre el cuaderno en la última hoja donde estaba.
     await page.key('ArrowLeft');
     let state = await waitOpen(page, 'la flecha izquierda no abrió el cuaderno desde la contratapa');
     equal(state.title, LONG, 'desde la contratapa se abre en la última hoja');
@@ -227,12 +224,9 @@ test('contratapa: la flecha derecha en la última hoja cierra por atrás', async
   await toLastPage(page);
   await page.key('ArrowRight');
   await waitFace(page, 'back', 'la flecha derecha, en la última página de la última hoja, no llevó a la contratapa');
-  // Y con la tapa a la vista, la flecha izquierda no abre nada.
+  // Y con la tapa a la vista, se da vuelta y se abre.
   await page.key('v');
   await waitFace(page, 'front', 'V no dio vuelta el cuaderno');
-  await page.key('ArrowLeft');
-  await sleep(500);
-  equal(await face(page), 'front', 'la flecha izquierda no tenía que abrir el cuaderno desde la tapa');
   // Después de darlo vuelta, la tapa se abre por la primera hoja.
   await page.key('ArrowRight');
   const state = await waitOpen(page, 'la flecha derecha no abrió el cuaderno desde la tapa');

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUpRight, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useDismiss, usePresence } from '../hooks';
 import { useT } from '../i18n';
 
@@ -71,6 +71,8 @@ export interface MenuAction {
   separator?: boolean;
   /** Atajo de teclado, mostrado a la derecha. */
   hint?: string;
+  /** Indicador o contador numérico discreto. */
+  badge?: ReactNode;
   onSelect: () => void;
 }
 
@@ -81,7 +83,16 @@ export interface MenuChoices {
   choices: { label: string; title?: string; selected: boolean; onSelect: () => void }[];
 }
 
-export type MenuItem = MenuAction | MenuChoices;
+/** Grupo de acciones secundarias que se despliegan dentro del mismo menú. */
+export interface MenuCollapsible {
+  type: 'collapsible';
+  label: string;
+  expandedLabel?: string;
+  separator?: boolean;
+  items: MenuItem[];
+}
+
+export type MenuItem = MenuAction | MenuChoices | MenuCollapsible;
 
 /** Botón con menú desplegable. */
 export function Menu(props: {
@@ -93,12 +104,21 @@ export function Menu(props: {
   className?: string;
   /** Clase extra para el contenedor, por ejemplo para posicionarlo. */
   anchorClassName?: string;
+  /** Clase extra para el menú desplegable (popover). */
+  popoverClassName?: string;
   style?: CSSProperties;
   align?: 'left' | 'right';
+  containerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const ref = useDismiss(open, () => setOpen(false));
   const list = usePresence(open, 110);
+
+  useEffect(() => {
+    if (!open) setExpandedKeys({});
+  }, [open]);
+
   const listRef = useCallback((node: HTMLDivElement | null) => {
     if (!node) return;
     const rect = node.getBoundingClientRect();
@@ -110,9 +130,98 @@ export function Menu(props: {
       node.style.left = 'auto';
       node.style.right = '0';
     }
+    const triggerRect = node.parentElement?.getBoundingClientRect();
+    if (triggerRect) {
+      const spaceBelow = window.innerHeight - triggerRect.bottom - 10;
+      const spaceAbove = triggerRect.top - 10;
+      if (rect.height > spaceBelow && spaceAbove > spaceBelow && spaceAbove >= 140) {
+        node.classList.add('above');
+        node.style.maxHeight = `${Math.max(120, Math.floor(spaceAbove))}px`;
+      } else {
+        node.classList.remove('above');
+        node.style.maxHeight = `${Math.max(120, Math.floor(spaceBelow))}px`;
+      }
+      if (node.scrollHeight > Math.floor(Math.max(spaceBelow, spaceAbove)) || window.innerHeight <= 440) {
+        node.classList.add('compact');
+      }
+    }
   }, []);
+
+  const renderItem = (item: MenuItem, key: string): ReactNode => {
+    if ('type' in item && item.type === 'collapsible') {
+      const isExpanded = !!expandedKeys[item.label];
+      return (
+        <div key={key} className={`menu-collapsible-group${item.separator ? ' separated' : ''}`}>
+          <button
+            type="button"
+            className="menu-item menu-collapsible-trigger"
+            aria-expanded={isExpanded}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedKeys((prev) => ({ ...prev, [item.label]: !prev[item.label] }));
+            }}
+          >
+            <span className="menu-icon">
+              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </span>
+            <span className="menu-label">{isExpanded ? (item.expandedLabel ?? item.label) : item.label}</span>
+          </button>
+          {isExpanded && (
+            <div className="menu-collapsible-content">
+              {item.items.map((sub, i) => renderItem(sub, `${key}-${i}`))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    if ('choices' in item) {
+      return (
+        <div key={key} className={`menu-row${item.separator ? ' separated' : ''}`} role="group" aria-label={item.label}>
+          <span className="menu-label">{item.label}</span>
+          <span className="menu-choices">
+            {item.choices.map((choice) => (
+              <button
+                key={choice.label}
+                type="button"
+                role="menuitemradio"
+                aria-checked={choice.selected}
+                title={choice.title}
+                onClick={() => {
+                  setOpen(false);
+                  choice.onSelect();
+                }}
+              >
+                {choice.label}
+              </button>
+            ))}
+          </span>
+        </div>
+      );
+    }
+    const action = item as MenuAction;
+    return (
+      <button
+        key={key}
+        type="button"
+        role="menuitem"
+        className={`menu-item${action.danger ? ' danger' : ''}${action.separator ? ' separated' : ''}`}
+        onClick={() => {
+          setOpen(false);
+          action.onSelect();
+        }}
+      >
+        <span className="menu-icon">{action.icon ?? (action.checked ? '✓' : null)}</span>
+        <span className="menu-label">{action.label}</span>
+        {action.badge !== undefined && <span className="menu-badge">{action.badge}</span>}
+        {action.icon && action.checked && <span className="menu-check" aria-hidden="true">✓</span>}
+        {action.hint && <kbd>{action.hint}</kbd>}
+      </button>
+    );
+  };
+
+  const baseClass = props.containerClassName ?? 'menu';
   return (
-    <div className={`menu${props.anchorClassName ? ` ${props.anchorClassName}` : ''}`} ref={ref}>
+    <div className={`${baseClass}${open ? ' open' : ''}${props.anchorClassName ? ` ${props.anchorClassName}` : ''}`} ref={ref}>
       <button
         type="button"
         className={props.className}
@@ -126,47 +235,13 @@ export function Menu(props: {
         {props.trigger}
       </button>
       {list.mounted && (
-        <div ref={listRef} className={`menu-list ${props.align === 'left' ? 'left' : 'right'}${list.leaving ? ' leaving' : ''}`} role="menu">
+        <div
+          ref={listRef}
+          className={`menu-list ${props.align === 'left' ? 'left' : 'right'}${list.leaving ? ' leaving' : ''}${props.popoverClassName ? ` ${props.popoverClassName}` : ''}`}
+          role="menu"
+        >
           {props.heading && <div className="menu-heading">{props.heading}</div>}
-          {props.items.map((item) =>
-            'choices' in item ? (
-              <div key={item.label} className={`menu-row${item.separator ? ' separated' : ''}`} role="group" aria-label={item.label}>
-                <span className="menu-label">{item.label}</span>
-                <span className="menu-choices">
-                  {item.choices.map((choice) => (
-                    <button
-                      key={choice.label}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={choice.selected}
-                      title={choice.title}
-                      onClick={() => {
-                        setOpen(false);
-                        choice.onSelect();
-                      }}
-                    >
-                      {choice.label}
-                    </button>
-                  ))}
-                </span>
-              </div>
-            ) : (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                className={`menu-item${item.danger ? ' danger' : ''}${item.separator ? ' separated' : ''}`}
-                onClick={() => {
-                  setOpen(false);
-                  item.onSelect();
-                }}
-              >
-                <span className="menu-icon">{item.checked ? '✓' : item.icon}</span>
-                <span className="menu-label">{item.label}</span>
-                {item.hint && <kbd>{item.hint}</kbd>}
-              </button>
-            ),
-          )}
+          {props.items.map((item, index) => renderItem(item, item.label || `item-${index}`))}
         </div>
       )}
     </div>

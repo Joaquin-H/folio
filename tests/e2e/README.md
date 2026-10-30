@@ -6,6 +6,7 @@ Corren sobre la interfaz con datos de muestra (`src/mock.ts`), en un Edge sin ve
 tocan la app instalada ni ninguna nota real.
 
 ```powershell
+node tests/e2e/full-interaction.mjs        # suite interactiva completa (RC4)
 node tests/e2e/notebook.mjs                 # todas las del cuaderno
 node tests/e2e/cover.mjs                    # tapa, contratapa, estilos e imágenes
 node tests/e2e/shortcuts.mjs                # atajos a medida y tamaño de la letra

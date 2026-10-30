@@ -352,6 +352,59 @@ fn stem_of(path: &Path) -> String {
     path.file_stem().map(|stem| stem.to_string_lossy().to_string()).unwrap_or_default()
 }
 
+/// Busca en `dir` un archivo existente cuyo nombre (sin extensión) coincida con `stem`
+/// (ignorando mayúsculas/minúsculas) y con extensión .txt o .md.
+fn find_clippings_file(dir: &Path, stem: &str) -> Option<PathBuf> {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(p_stem) = p.file_stem().and_then(|s| s.to_str()) {
+                    if p_stem.eq_ignore_ascii_case(stem) {
+                        if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                            if ext.eq_ignore_ascii_case("txt") || ext.eq_ignore_ascii_case("md") {
+                                return Some(p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Localiza la ruta del archivo de recortes existente según el destino configurado,
+/// verificando tanto en el disco como en la base de datos (por ejemplo, si la hoja general
+/// de Recortes ya existe como `Recortes.txt`, `recortes.txt` o `recortes.md`).
+fn find_existing_clippings_path(db: &Db, dir: &Path, target: Target, time: &LocalTime) -> Option<PathBuf> {
+    let stem = target_stem(target, time);
+    if let Some(path) = find_clippings_file(dir, &stem) {
+        return Some(path);
+    }
+    if target == Target::All {
+        if let Some(path) = find_clippings_file(dir, "clippings") {
+            return Some(path);
+        }
+        if let Ok(clippings_cat_id) = db.ensure_clippings_category() {
+            let conn = db.lock();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT path FROM sheets WHERE category_id = ?1 AND source = 'file' AND hidden = 0 AND secret = 0 AND missing = 0 ORDER BY modified_at DESC LIMIT 1",
+                )
+                .ok()?;
+            let sheet_path: Option<String> = stmt.query_row([clippings_cat_id], |r| r.get(0)).ok();
+            if let Some(sp) = sheet_path {
+                let p = PathBuf::from(sp);
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Guarda el recorte en la carpeta de Book y lo anota en el cuaderno. Toma el candado de las
 /// escrituras de archivos: mientras se guarda otra hoja, espera.
 fn store(db: &Db, dir: &Path, time: &LocalTime, prepared: &Prepared) -> Result<Stored, String> {
@@ -360,13 +413,24 @@ fn store(db: &Db, dir: &Path, time: &LocalTime, prepared: &Prepared) -> Result<S
     std::fs::create_dir_all(dir).map_err(e)?;
     let entry = prepared.entry();
     let target = Target::load(db);
+    let clippings_cat_id = db.ensure_clippings_category().map_err(e)?;
     if !prepared.sensitive {
         if let Some(path) = append_to_target(db, dir, target, time, &entry)? {
+            let key = path.to_string_lossy().to_string();
+            if let Some(sheet_id) = db.file_key_owner(&key) {
+                let current_cat = db.sheet_category(sheet_id).ok().flatten();
+                if current_cat.is_none() || current_cat == Some(clippings_cat_id) {
+                    let _ = db.set_sheet_category(sheet_id, Some(clippings_cat_id));
+                }
+                let _ = db.touch_sheet(sheet_id);
+            }
             return Ok(Stored { name: stem_of(&path), path, alone: false, sensitive: false, first_note });
         }
     }
     let path = commands::write_new_file(db, dir, &own_stem(time), &entry)?;
-    commands::index_file(db, &path, entry)?;
+    let sheet_id = commands::index_file(db, &path, entry)?;
+    let _ = db.set_sheet_category(sheet_id, Some(clippings_cat_id));
+    let _ = db.touch_sheet(sheet_id);
     Ok(Stored { name: stem_of(&path), path, alone: true, sensitive: prepared.sensitive, first_note })
 }
 
@@ -380,7 +444,21 @@ fn store(db: &Db, dir: &Path, time: &LocalTime, prepared: &Prepared) -> Result<S
 /// marcas de la vieja.
 fn append_to_target(db: &Db, dir: &Path, target: Target, time: &LocalTime, entry: &str) -> Result<Option<PathBuf>, String> {
     let stem = target_stem(target, time);
-    let path = dir.join(format!("{stem}.txt"));
+    let (path, is_new) = match find_existing_clippings_path(db, dir, target, time) {
+        Some(p) => (p, false),
+        None => {
+            let fmt = db.get_setting("note_format").unwrap_or_else(|| "txt".to_string());
+            let ext = if fmt.eq_ignore_ascii_case("md") { "md" } else { "txt" };
+            (dir.join(format!("{stem}.{ext}")), true)
+        }
+    };
+
+    if is_new {
+        let created = commands::write_new_file(db, dir, &stem, entry)?;
+        commands::index_file(db, &created, entry.to_string())?;
+        return Ok(Some(created));
+    }
+
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -391,7 +469,7 @@ fn append_to_target(db: &Db, dir: &Path, target: Target, time: &LocalTime, entry
         Err(err) => return Err(e(err)),
     };
     let key = path.to_string_lossy().to_string();
-    let trashed = db.sheet_id("file", &key).is_some_and(|id| db.origin(id).ok().flatten().is_some_and(|origin| origin.hidden));
+    let trashed = db.file_key_owner(&key).is_some_and(|id| db.origin(id).ok().flatten().is_some_and(|origin| origin.hidden));
     let Some(on_disk) = text::decode(&bytes).filter(|_| !trashed) else {
         return Ok(None);
     };
@@ -440,9 +518,19 @@ pub fn trigger(app: &AppHandle) {
 
 /// Un aviso del sistema, sin robar el foco. Si no se puede mostrar, queda en la consola.
 fn notify(app: &AppHandle, title: &str, body: &str) {
-    if let Err(err) = app.notification().builder().title(title).body(body).show() {
-        eprintln!("No se pudo mostrar el aviso «{title}»: {err}");
+    let is_visible = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+    if !is_visible {
+        if let Err(err) = app.notification().builder().title(title).body(body).show() {
+            eprintln!("No se pudo mostrar el aviso «{title}»: {err}");
+        }
     }
+    let _ = app.emit("book:clipping-saved", serde_json::json!({
+        "sheetId": serde_json::Value::Null,
+        "name": "",
+        "title": title,
+        "body": body,
+        "message": format!("{title} · {body}")
+    }));
     let _ = app.emit("book:changed", ());
 }
 
@@ -451,8 +539,12 @@ fn run(app: &AppHandle) {
         return;
     };
     let en = crate::is_english(app);
-    let main_key = lock(&shared.shortcut_keys).send.virtual_key();
-    match selection::copy_selection(main_key, &Wall::start()) {
+    let send_combo = lock(&shared.shortcut_keys).send.clone();
+    let main_key = send_combo.virtual_key();
+    let alt = send_combo.alt;
+    let shift = send_combo.shift;
+    let win = send_combo.win;
+    match selection::copy_selection(main_key, alt, shift, win, &Wall::start()) {
         Ok(clip) => deliver(app, &shared, &clip),
         Err(Fail::NoSelection) => notify(app, "Folio", Fail::NoSelection.message_for(en)),
         Err(fail) => notify(
@@ -495,7 +587,21 @@ fn deliver(app: &AppHandle, shared: &Arc<Shared>, clip: &Clip) {
             // El cuaderno lo muestra enseguida; la carpeta nueva empieza a vigilarse.
             commands::wrote_note(app, shared, stored.first_note);
             let (title, body) = confirmation_for(&stored, en);
-            notify(app, title, &body);
+            let is_visible = app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(false);
+            if !is_visible {
+                if let Err(err) = app.notification().builder().title(title).body(&body).show() {
+                    eprintln!("No se pudo mostrar el aviso «{title}»: {err}");
+                }
+            }
+            let sheet_id = shared.db.file_key_owner(&stored.path.to_string_lossy());
+            let _ = app.emit("book:clipping-saved", serde_json::json!({
+                "sheetId": sheet_id,
+                "name": stored.name,
+                "title": title,
+                "body": body,
+                "message": format!("{title} · {body}")
+            }));
+            let _ = app.emit("book:changed", ());
         }
         Err(reason) => notify(app, err_title, &reason),
     }
@@ -718,6 +824,7 @@ mod tests {
         assert_eq!(sheet.content, "— 14:32 · Chrome · «Título de la página»\nHola\nmundo");
         assert_eq!(sheet.summary.title, "recortes-2026-10-14.txt");
         assert!(!sheet.summary.secret && !sheet.summary.hidden);
+        assert_eq!(sheet.summary.category_id, Some(folder.db.ensure_clippings_category().unwrap()));
         // El segundo ya no encuentra una carpeta nueva.
         assert!(!folder.send(&at(15, 0, 0), "otro", "Word", "").first_note);
     }
@@ -1033,5 +1140,40 @@ con dos renglones
         assert_eq!(month1.path, folder.dir.join("recortes-2026-10.txt"));
         assert_eq!(month2.path, folder.dir.join("recortes-2026-10.txt"));
         assert_eq!(folder.text_of(&month1.path), "— 14:00 · Chrome\nmes uno\n\n— 10:00 · Chrome\nmes dos");
+    }
+
+    #[test]
+    fn recorte_reutiliza_hoja_existente_con_mayusculas_o_md() {
+        let folder = Folder::new("reutilizar-casing");
+        fs::create_dir_all(&folder.dir).unwrap();
+        let existing_path = folder.dir.join("Recortes.txt");
+        fs::write(&existing_path, "texto base en Recortes\n").unwrap();
+        let _ = commands::index_file(&folder.db, &existing_path, "texto base en Recortes\n".to_string()).unwrap();
+
+        folder.db.set_setting("send_to", "all").unwrap();
+        let stored = folder.send(&at(14, 0, 0), "nuevo recorte", "Chrome", "");
+        assert_eq!(stored.path, existing_path);
+        let on_disk = folder.text_of(&existing_path);
+        assert!(on_disk.contains("texto base en Recortes"));
+        assert!(on_disk.contains("nuevo recorte"));
+        // No se creó ningún archivo secundario como recortes (2) o Recortes2:
+        assert_eq!(fs::read_dir(&folder.dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn recorte_respeta_formato_md_si_esta_configurado() {
+        let folder = Folder::new("formato-md");
+        fs::create_dir_all(&folder.dir).unwrap();
+        folder.db.set_setting("note_format", "md").unwrap();
+        folder.db.set_setting("send_to", "all").unwrap();
+
+        let stored1 = folder.send(&at(10, 0, 0), "recorte markdown 1", "Chrome", "");
+        assert_eq!(stored1.path, folder.dir.join("recortes.md"));
+        let stored2 = folder.send(&at(10, 5, 0), "recorte markdown 2", "Chrome", "");
+        assert_eq!(stored2.path, folder.dir.join("recortes.md"));
+        assert_eq!(fs::read_dir(&folder.dir).unwrap().count(), 1);
+        let content = folder.text_of(&stored1.path);
+        assert!(content.contains("recorte markdown 1"));
+        assert!(content.contains("recorte markdown 2"));
     }
 }
