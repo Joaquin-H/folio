@@ -11,3 +11,8 @@ releases
 # Herramientas locales
 .claude/
 scratch/
+
+# Personal Store docs & config
+docs/microsoft-store.md
+docs/PRIVACY.md
+src-tauri/tauri.microsoftstore.conf.json

@@ -654,7 +654,7 @@ html[data-frame='none'] .cover,
   left: 0;
   z-index: 20;
   padding-bottom: 6px;
-  background: transparent;
+  background: transparent !important;
   pointer-events: none;
   transition: opacity 0.09s ease;
   animation: fade 0.24s ease;
@@ -670,12 +670,10 @@ html[data-frame='none'] .cover,
 .page-head .menu,
 .page-head .chip,
 .page-head .page-title,
-.page-head .page-actions-row,
 .page-header button,
 .page-header .menu,
 .page-header .chip,
-.page-header .page-title,
-.page-header .page-actions-row {
+.page-header .page-title {
   pointer-events: auto;
   position: relative;
   z-index: 20;
@@ -688,6 +686,7 @@ html[data-frame='none'] .cover,
   justify-content: flex-start;
   min-width: 0;
   margin-top: 1px;
+  background: transparent !important;
 }
 
 .page-title {
@@ -703,6 +702,7 @@ html[data-frame='none'] .cover,
   white-space: nowrap;
   user-select: text;
   cursor: pointer;
+  background: transparent !important;
 }
 
 /* Línea 2: Fecha · Guardado · Etiqueta/categoría */
@@ -767,6 +767,15 @@ html[data-frame='none'] .cover,
   font-size: 11px;
   opacity: 0.8;
   transition: opacity 0.16s ease;
+  pointer-events: none;
+  background: transparent !important;
+}
+
+.page-meta button,
+.page-meta a,
+.page-meta .menu,
+.page-meta .chip,
+.page-meta input {
   pointer-events: auto;
 }
 
@@ -791,9 +800,14 @@ html[data-frame='none'] .cover,
   align-items: center;
   justify-content: flex-start;
   margin-top: 5px;
-  pointer-events: auto;
+  pointer-events: none;
+  background: transparent !important;
   position: relative;
   z-index: 20;
+}
+
+.page-actions-row > * {
+  pointer-events: auto;
 }
 
 @container pagehead (max-width: 460px) {
@@ -1382,7 +1396,7 @@ html[data-frame='none'] .cover,
   top: 30px;
   bottom: 30px;
   left: 7px;
-  z-index: 3;
+  z-index: 25;
   display: flex;
   flex-direction: column;
   justify-content: space-between;

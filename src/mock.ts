@@ -864,7 +864,7 @@ export const mockApi: Api = {
       captureShortcut: settings.captureKeys.split('+').join(' + '),
       openShortcut: settings.openKeys.split('+').join(' + '),
       sendShortcut: settings.sendKeys.split('+').join(' + '),
-      version: '1.0.0',
+      version: '1.1.0',
       dataPath: 'C:\\Users\\demo\\AppData\\Roaming\\com.j-playground.folio\\folio.db',
     });
   },

@@ -3,6 +3,12 @@
 Las versiones siguen [SemVer](https://semver.org/lang/es/). Mientras Folio esté en 0.x, cada
 versión menor puede cambiar cómo se ve o se usa.
 
+## 1.1.0 — 2026-10-31
+
+- **Hojas diarias (Hoy), recortes en vivo y pestañas renovadas**: organización automática por día, categoría de recortes en tiempo real (`Ctrl+Alt+X`), hojas fijadas y solapas compactas.
+- **Hojas arrancables y dock de captura**: posibilidad de arrancar hojas como ventanas flotantes y dock colapsable en escritorio.
+- **Servidor MCP integrado y mejoras de interfaz**: control para agentes vía stdio, mapa de hojas completo, buscador en ajustes, modo sin marco y correcciones de apilamiento visual (espiral, encabezado transparente, texto y zonas de paso de página).
+
 ## 1.0.0 — 2026-10-18
 
 - **Primer lanzamiento mayor (Folio 1.0.0)**: primera versión estable de producción de Folio.
